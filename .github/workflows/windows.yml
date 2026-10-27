@@ -1,6 +1,6 @@
 name: Windows
-# Builds and tests reader-sync on real Windows (MSVC). Linux checks alone don't establish
-# that the Windows build works. The app build joins this workflow at integration (PLAN.md §8).
+# Builds and tests reader-sync on real Windows (MSVC) and uploads the app. Linux checks alone
+# don't establish that the Windows build works.
 on:
   push:
   workflow_dispatch:
@@ -16,5 +16,29 @@ jobs:
         with:
           toolchain: stable-x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
-      - name: Core tests (storage, books, positions, pairing, multi-device sync)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Core tests (storage, books, positions, files, pairing, multi-device sync)
         run: cargo test -p readersync-core
+      - run: npm ci
+        working-directory: app
+      - name: App tests
+        run: npm test
+        working-directory: app
+      - name: Build the app
+        run: npx tauri build --no-bundle
+        working-directory: app
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-win | Out-Null
+          Copy-Item target/release/reader-sync.exe dist-win/
+          Copy-Item LICENSE dist-win/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reader-sync-windows-x64
+          path: dist-win/
+          if-no-files-found: error
