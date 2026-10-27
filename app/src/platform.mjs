@@ -112,3 +112,13 @@ async function readDropped(invoke, path) {
     }
   }
 }
+
+/** Scans a QR code with the camera (Android). `scanQrCode.available` says whether it can. */
+export async function scanQrCode() {
+  const { scan, Format, checkPermissions, requestPermissions } = await import('@tauri-apps/plugin-barcode-scanner');
+  let permission = await checkPermissions();
+  if (permission !== 'granted') permission = await requestPermissions();
+  if (permission !== 'granted') throw new Error('Camera access is needed to scan a code. You can paste the code instead.');
+  return (await scan({ formats: [Format.QRCode], windowed: false })).content;
+}
+scanQrCode.available = isTauri() && isAndroid();

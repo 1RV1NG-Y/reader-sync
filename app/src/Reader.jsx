@@ -9,6 +9,7 @@ import LocationDialog from './LocationDialog.jsx';
 import { canFullscreen, isAndroid, onBackButton, onWindowClose, toggleFullscreen } from './platform.mjs';
 import { IconButton, percent } from './ui.jsx';
 import WindowControls from './WindowControls.jsx';
+import Handoff, { waitForHandoff } from './Handoff.jsx';
 
 const COMPACT_QUERY = '(max-width: 700px), (pointer: coarse) and (max-width: 1000px)';
 function useCompact() {
@@ -35,6 +36,10 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
   const [panel, setPanel] = useState(null); // 'toc' | 'search' | 'settings' | 'location'
   const [notice, setNotice] = useState(null); // { kind: 'continued' | 'arrival' | 'divergent', … }
   const [chrome, setChrome] = useState(true);
+  // The reader moved since the position was last saved to the library: "has your place" is off.
+  const [moved, setMoved] = useState(false);
+  const [handingOff, setHandingOff] = useState(null); // device name while the close waits
+  const closeAnyway = useRef(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [search, setSearch] = useState({ query: '', groups: [], progress: null });
   const compact = useCompact();
@@ -77,6 +82,7 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
         onRelocate: (locator, info) => {
           live.current = locator;
           setWhere(info);
+          setMoved(true);
           library.checkpoint(bookId, locator);
         },
         onDocument: doc => {
@@ -137,7 +143,16 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('blur', onBlur);
     window.addEventListener('pagehide', onPageHide);
-    const offClose = onWindowClose(flush);
+    // Closing the window: save the live location, then give a connected device a few seconds
+    // to confirm it has it (PLAN.md §5), unless the reader chooses "Close anyway".
+    const offClose = onWindowClose(async () => {
+      await flush();
+      const devices = await library.handoff?.(bookId).catch(() => []) ?? [];
+      const target = devices.find(d => d.connected);
+      if (!target || devices.some(d => d.hasPlace && d.hasFile)) return;
+      setHandingOff(target.name);
+      await Promise.race([waitForHandoff(library, bookId), new Promise(r => { closeAnyway.current = r; })]);
+    });
     const offBack = onBackButton(async () => {
       if (panelRef.current) { setPanel(null); return true; }
       await close();
@@ -150,7 +165,9 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
       offClose();
       offBack();
     };
-  }, [flush, close]);
+  }, [flush, close, library, bookId]);
+
+  useEffect(() => library.subscribe(e => { if (e.type === 'saved' && e.bookId === bookId) setMoved(false); }), [library, bookId]);
 
   // ── another device's position arrives while reading → banner, never a jump ────────────────
   useEffect(() => library.subscribe(e => {
@@ -287,6 +304,7 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
           {!compact && where.chapter && <span className="chapter" data-tauri-drag-region>{where.chapter}</span>}
         </div>
         <div className="toolbar-group" data-tauri-drag-region>
+          <Handoff library={library} bookId={bookId} moved={moved} compact={compact} onHandOff={() => flush().catch(console.error)} />
           <IconButton icon={ALargeSmall} label="Reading settings" active={panel === 'settings'} onClick={() => openPanel('settings')} />
           {canFullscreen() && <IconButton icon={fullscreen ? Minimize : Maximize} label={fullscreen ? 'Leave full screen' : 'Full screen'} onClick={fullscreenToggle} />}
           {!fullscreen && <WindowControls />}
@@ -318,6 +336,15 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
             }} />
         )}
       </main>
+
+      {handingOff && (
+        <div className="handing-off" role="alertdialog" aria-label="Handing off">
+          <div>
+            <span>Handing off your place to {handingOff}…</span>
+            <button type="button" onClick={() => closeAnyway.current?.()}>Close anyway</button>
+          </div>
+        </div>
+      )}
 
       <footer className="reader-footer">
         <IconButton icon={ChevronLeft} label={scrolled ? 'Previous chapter' : 'Previous page'} disabled={status !== 'ready'}

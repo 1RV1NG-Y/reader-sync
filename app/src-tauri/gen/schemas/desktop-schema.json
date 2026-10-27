@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Use the library: the sync core's rpc, and book bytes in and out.",
+          "type": "string",
+          "const": "allow-library",
+          "markdownDescription": "Use the library: the sync core's rpc, and book bytes in and out."
+        },
+        {
           "description": "Read an EPUB or PDF the user just dropped onto the window.",
           "type": "string",
           "const": "allow-read-dropped-file",

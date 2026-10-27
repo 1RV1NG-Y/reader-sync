@@ -1,7 +1,17 @@
 {
   "identifier": "mobile",
   "description": "Main window on Android: Back button handling and exiting from the library",
-  "windows": ["main"],
-  "permissions": ["core:default", "core:app:allow-exit"],
-  "platforms": ["android", "iOS"]
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:app:allow-exit",
+    "allow-library",
+    "barcode-scanner:default"
+  ],
+  "platforms": [
+    "android",
+    "iOS"
+  ]
 }

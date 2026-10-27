@@ -273,3 +273,42 @@ input[type='text'], input[type='search'], input:not([type]) {
   .dialog .row { flex-wrap: wrap; }
   .dialog .row input { flex-basis: 100%; }
 }
+
+/* ── devices ──────────────────────────────────────────────────────────────── */
+.devices section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 8px; }
+.device-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.device-row.removed { opacity: 0.55; }
+.device-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--surface-2); color: var(--muted); display: flex; align-items: center; justify-content: center; flex: none; }
+.device-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.device-text small { color: var(--muted); font-size: 13px; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--border); margin-right: 6px; vertical-align: 1px; }
+.status-dot.on { background: #3fa66b; }
+button.small { min-height: 30px; padding: 0 10px; font-size: 13px; }
+.device-actions { display: flex; flex-direction: column; gap: 8px; }
+.device-actions button { justify-content: center; }
+.invite .qr { background: #fff; border-radius: 10px; padding: 12px; width: fit-content; margin: 0 auto 10px; }
+.invite .qr svg { display: block; width: 220px; height: 220px; }
+.ticket { width: 100%; min-height: 70px; font: 12px/1.4 ui-monospace, monospace; word-break: break-all; resize: vertical; margin-bottom: 8px; }
+
+.book-card.arriving .cover, .book-row.arriving .cover { opacity: 0.45; }
+.book-card { position: relative; }
+.arrival {
+  position: absolute; left: 6px; right: 6px; top: 8px; padding: 4px 8px; border-radius: 6px; font-size: 12px; text-align: center;
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow);
+}
+.toast.space { display: flex; gap: 10px; align-items: center; cursor: default; }
+.toast.space button { min-height: 28px; padding: 0 10px; }
+
+/* ── handoff status (PLAN.md §5) ──────────────────────────────────────────── */
+.handoff {
+  height: 30px; min-height: 0; padding: 0 10px; gap: 6px; border-radius: 15px; font-size: 13px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); max-width: 200px; margin-right: 4px;
+}
+.handoff span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.handoff-ready { color: #2e8b57; border-color: color-mix(in srgb, #2e8b57 40%, transparent); }
+:root[data-theme='dark'] .handoff-ready { color: #6fcf97; }
+.handoff-none { color: var(--danger); }
+.spin { animation: spin 1.2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.handing-off { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgb(0 0 0 / 0.35); }
+.handing-off > div { background: var(--surface); padding: 18px 22px; border-radius: 12px; box-shadow: var(--shadow); display: flex; gap: 14px; align-items: center; }

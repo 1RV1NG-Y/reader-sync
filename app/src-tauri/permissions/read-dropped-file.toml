@@ -2,3 +2,8 @@
 identifier = "allow-read-dropped-file"
 description = "Read an EPUB or PDF the user just dropped onto the window."
 commands.allow = ["read_dropped_file"]
+
+[[permission]]
+identifier = "allow-library"
+description = "Use the library: the sync core's rpc, and book bytes in and out."
+commands.allow = ["rpc", "import_book", "book_file"]

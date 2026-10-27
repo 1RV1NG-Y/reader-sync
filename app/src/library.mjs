@@ -411,11 +411,61 @@ const platformName = () => {
 };
 
 let instance;
-/** The app's library (one per page). */
+/** The app's library (one per page): the sync core inside the app, the local backend in a browser. */
 export function openLibrary() {
-  return instance ??= createLocalLibrary({
-    store: indexedDbStore(),
-    deviceName: platformName(),
-    extractMetadata: (file, format) => import('./reader/metadata.mjs').then(m => m.extractMetadata(file, format)),
+  if (instance) return instance;
+  const extractMetadata = (file, format) => import('./reader/metadata.mjs').then(m => m.extractMetadata(file, format));
+  if (!globalThis.__TAURI_INTERNALS__) {
+    return instance = createLocalLibrary({ store: indexedDbStore(), deviceName: platformName(), extractMetadata });
+  }
+  const ready = import('./library-core.mjs').then(async ({ createCoreLibrary, coverCache }) => {
+    const covers = coverCache();
+    await covers.loaded;
+    const core = createCoreLibrary({
+      invoke: async (...args) => (await import('@tauri-apps/api/core')).invoke(...args),
+      listen: async (...args) => (await import('@tauri-apps/api/event')).listen(...args),
+      covers,
+      extractMetadata,
+    });
+    // Phone back from the background, or a laptop back from sleep: retry peers right away.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') core.networkChanged().catch(() => {});
+    });
+    migrateLocalLibrary(core).catch(console.error);
+    return core;
   });
+  // The UI gets the library synchronously; every method waits for the core module to load.
+  return instance = new Proxy({}, {
+    get: (_, name) => name === 'subscribe'
+      ? listener => { let off = null, gone = false; ready.then(lib => { if (!gone) off = lib.subscribe(listener); }); return () => { gone = true; off?.(); }; }
+      : name === 'checkpoint'
+        ? (...args) => { ready.then(lib => lib.checkpoint(...args)); }
+        : name === 'debug' ? undefined
+          : async (...args) => (await ready)[name](...args),
+  });
+}
+
+/**
+ * Moves what the local backend held before sync existed (milestone A1) into the core once:
+ * every book file with its title and cover, this device's last position, and the settings.
+ * The old data is left in place as a backup; a flag stops it running again.
+ */
+export async function migrateLocalLibrary(core, store = indexedDbStore()) {
+  if (await store.get('meta', 'migratedToCore')) return;
+  const device = await store.get('meta', 'device');
+  const books = await store.getAll('books');
+  const positions = await store.getAll('positions');
+  for (const book of books) {
+    const blob = await store.get('files', book.id);
+    if (!blob) continue;
+    const file = new File([blob], book.originalName || `${book.id}.${book.format}`);
+    const { added, skipped } = await core.importFiles([file]);
+    const id = added[0]?.id ?? skipped.find(s => s.reason === 'duplicate')?.id;
+    if (!id) throw new Error(`Couldn't move “${book.title}” into the synced library: ${skipped[0]?.message}`);
+    const mine = positions.find(p => p.bookId === book.id && p.deviceId === device?.id);
+    if (mine?.locator) await core.flushPosition(id, mine.locator);
+  }
+  const settings = await store.get('meta', 'settings');
+  if (settings) await core.setSettings(settings);
+  await store.write([{ table: 'meta', key: 'migratedToCore', value: new Date().toISOString() }]);
 }

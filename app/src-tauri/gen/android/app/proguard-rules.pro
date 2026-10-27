@@ -18,4 +18,10 @@
 
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
-#-renamesourcefileattribute SourceFile
+#-renamesourcefileattribute SourceFile# reflection. R8 strips them in release builds, which crashes scanning on the first camera
+# frame (NullPointerException in mlkit_vision_common). Keep ML Kit and its GMS internals.
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_** { *; }
+-keep class com.google.android.gms.common.** { *; }
+-keep class com.google.firebase.components.** { *; }
+-dontwarn com.google.mlkit.**

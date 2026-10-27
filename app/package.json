@@ -16,6 +16,7 @@
     "android:build": "node scripts/build-apk.mjs"
   },
   "dependencies": {
+    "@tauri-apps/plugin-barcode-scanner": "^2.5.1",
     "lucide-react": "^0.577.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

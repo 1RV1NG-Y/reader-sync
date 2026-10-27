@@ -108,6 +108,8 @@ pub struct BookView {
     pub progress: Option<f64>,
     /// Devices holding a complete, verified copy of the file.
     pub held_by: Vec<String>,
+    /// When this device last saved a position in the book (its own clock).
+    pub last_read_at: Option<String>,
 }
 
 /// Whether another device could continue this book right now (PLAN.md §5).
@@ -424,9 +426,10 @@ impl Node {
                 if let Some(own) = local.books.get(&book.id) {
                     positions.insert(me.clone(), own.record.clone());
                 }
+                let last_read_at = positions.get(&me).map(|p| p.at.clone());
                 let progress = positions.values().map(|p| p.fraction).reduce(f64::max);
                 let held_by = holdings.iter().filter(|(_, h)| h.contains(&book.hash)).map(|(d, _)| d.clone()).collect();
-                BookView { book, progress, held_by }
+                BookView { book, progress, held_by, last_read_at }
             })
             .collect()
     }

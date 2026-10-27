@@ -16,7 +16,8 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-is-maximized",
     "core:window:allow-close",
-    "allow-read-dropped-file"
+    "allow-read-dropped-file",
+    "allow-library"
   ],
   "platforms": [
     "linux",
