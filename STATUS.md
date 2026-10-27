@@ -37,8 +37,18 @@ Last updated: 2026-10-27, during milestone I1 (integration).
    `Windows` workflow runs core + app tests, builds the app and uploads
    `reader-sync-windows-x64` (the exe). Download: `gh run download <run id> -n reader-sync-windows-x64`.
    Check the latest run with `gh run list --limit 1`.
-5. **Android background measurement** (PLAN §5, §8 "Right away") — not done. Decides whether
-   background work comes before milestone D.
+5. **Android background measurement — done, and it decides the next step.** Measured with the
+   reader itself on the Galaxy S22 (Android 16), 2026-10-27, paired with the Linux app: while
+   the app is in the foreground, sessions hold; when the screen goes off (power button) or the
+   app is backgrounded, the session times out ~10 s later (8 s QUIC idle timeout) and the
+   phone stops syncing. So the phone is unreachable in ordinary use (phone in pocket while
+   reading on the PC) → per PLAN §5/§8, **Android background work is now part of I1**:
+   keep the process (the Rust node runs in it, independent of the WebView) alive while
+   needed, choosing the foreground-service type from the workload (keep a LAN listener
+   alive; receive small updates and occasional files) against Android's documented types
+   (`dataSync` is limited to 6 h/24 h for apps targeting Android 15+; `connectedDevice` has
+   its own permission prerequisites; `specialUse` only if nothing else fits). Verify Doze
+   behaviour (network access for a foreground service with the screen off) on the device.
 
 ## Known gaps / notes for whoever continues
 
