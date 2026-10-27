@@ -442,7 +442,7 @@ background work is done here.
 ### D — daily driver
 
 Trash / remove download / delete forever with the only-copy warning, metadata editing, covers,
-library sorting/search, PDF support, Android "Open with" + share target, import existing books
+library sorting/search, a "Publisher styles: on/off" reading setting (some books' own CSS breaks at larger font sizes, e.g. fixed-height chapter headings), PDF support, Android "Open with" + share target, import existing books
 from your Foliate / Thorium / Moon+ folders (optionally their positions, where readable).
 **Check:** you use it instead of the three apps for a week.
 
