@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["core"]
+# The Tauri app joins the workspace at integration (PLAN.md §8, I1); until then it builds on its own.
+exclude = ["app/src-tauri"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true
