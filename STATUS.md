@@ -33,9 +33,10 @@ Last updated: 2026-10-27, during milestone I1 (integration).
    devices (the user does the Windows boot): import on Linux → ✓ phone → shut down → Windows
    resumes at the passage; scroll-then-close; Wi-Fi off mid-transfer; kill mid-reading;
    divergence prompt; screen-off handoff with the phone locked.
-4. **Windows CI app build** — `.github/workflows/windows.yml` only runs core tests. Add: Node
-   setup, `npm ci` in `app/`, `npx tauri build --no-bundle` (or a zip of the exe), upload the
-   artifact. The repo has no GitHub remote yet; ask the user before creating one.
+4. **Windows CI app build** — public repo https://github.com/1RV1NG-Y/reader-sync; the
+   `Windows` workflow runs core + app tests, builds the app and uploads
+   `reader-sync-windows-x64` (the exe). Download: `gh run download <run id> -n reader-sync-windows-x64`.
+   Check the latest run with `gh run list --limit 1`.
 5. **Android background measurement** (PLAN §5, §8 "Right away") — not done. Decides whether
    background work comes before milestone D.
 
