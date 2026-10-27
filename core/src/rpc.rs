@@ -5,7 +5,7 @@ use anyhow::{Result, bail};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::{BookPatch, Choice, Location, NewBook, Node, RevRef};
+use crate::{BookPatch, Choice, ImportMeta, ImportSource, Location, Node, RevRef};
 
 #[derive(Deserialize)]
 struct TicketParams {
@@ -44,6 +44,12 @@ struct ResolveParams {
 }
 
 #[derive(Deserialize)]
+struct ImportParams {
+    path: std::path::PathBuf,
+    meta: ImportMeta,
+}
+
+#[derive(Deserialize)]
 struct SettingsParams {
     patch: serde_json::Map<String, Value>,
 }
@@ -53,9 +59,28 @@ pub async fn dispatch(node: &Node, method: &str, params: Value) -> Result<Value>
     Ok(match method {
         "status" => serde_json::to_value(node.status())?,
         "books" => serde_json::to_value(node.books())?,
-        "addBook" => {
-            let (book, added) = node.add_book(serde_json::from_value::<NewBook>(p)?).await?;
+        "importBook" => {
+            let p: ImportParams = serde_json::from_value(p)?;
+            let (book, added) = node.import_book(ImportSource::Path(p.path), p.meta).await?;
             serde_json::json!({ "book": book, "added": added })
+        }
+        "bookFile" => {
+            let p: IdParams = serde_json::from_value(p)?;
+            serde_json::to_value(node.book_file(&p.id)?)?
+        }
+        "onlyCopy" => {
+            let p: IdParams = serde_json::from_value(p)?;
+            serde_json::to_value(node.only_copy(&p.id)?)?
+        }
+        "removeDownload" => {
+            let p: IdParams = serde_json::from_value(p)?;
+            node.remove_download(p.id).await?;
+            Value::Null
+        }
+        "downloads" => serde_json::to_value(node.downloads())?,
+        "retryDownloads" => {
+            node.retry_downloads();
+            Value::Null
         }
         "updateBook" => {
             let p: UpdateParams = serde_json::from_value(p)?;

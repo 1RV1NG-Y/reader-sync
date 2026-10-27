@@ -1,5 +1,9 @@
 //! A device's view of one synchronized library: storage, pairing, and live sync sessions.
 
+mod files;
+
+pub use files::{Downloads, ImportMeta, ImportSource, SpaceIssue, TransferView};
+
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
@@ -27,6 +31,7 @@ use crate::{
     model::{self, Book, BookPatch, DeviceRecord, NewBook},
     positions::{self, Decision, Location, Placed, PositionRecord, RevRef, Selection},
     proto::{self, PAIR_ALPN, PROTOCOL_VERSION, PairMsg, SYNC_ALPN, SyncMsg, Ticket, TicketKind},
+    files::FileStore,
     store::{DocStore, write_atomic},
 };
 
@@ -219,6 +224,7 @@ struct Inner {
     state: Mutex<State>,
     /// Lock order: `state` before `local`, never the reverse.
     local: Mutex<LocalPositions>,
+    files: files::Files,
     events: broadcast::Sender<Event>,
     changed: watch::Sender<u64>,
     sessions: Mutex<HashMap<EndpointId, Session>>,
@@ -289,6 +295,7 @@ impl Node {
         let mut store = DocStore::open(&dir, &doc)?;
         let me = id.to_string();
         let local = load_local_positions(&dir, &doc, &me)?;
+        let file_store = FileStore::open(dir.join("books"))?;
         let own = model::read_devices(&doc).into_iter().find(|(k, _)| *k == me).map(|(_, r)| r);
         if own.as_ref().is_none_or(|r| r.name != meta.device_name || r.platform != cfg.platform) {
             let record = DeviceRecord {
@@ -322,6 +329,7 @@ impl Node {
             mdns,
             state: Mutex::new(State { doc, store, meta, peers }),
             local: Mutex::new(local),
+            files: files::Files::new(file_store),
             events: broadcast::channel(256).0,
             changed: watch::channel(0).0,
             sessions: Mutex::default(),
@@ -341,6 +349,7 @@ impl Node {
         node.recover_positions().await;
         node.publish_addresses().await;
         tokio::spawn(node.clone().dial_loop());
+        tokio::spawn(node.clone().files_loop());
         if node.0.mdns.is_some() {
             tokio::spawn(node.clone().mdns_loop());
         }
@@ -422,9 +431,8 @@ impl Node {
             .collect()
     }
 
-    /// Records a book in the library, or finds it if the same file is already there.
-    /// Returns the book and whether it was added. (Storing and sending the file itself is the
-    /// file store's job.)
+    /// Records a book in the library without a file, or finds it if already there. Front ends
+    /// use [`Node::import_book`], which also stores the file; this is for tests and tools.
     pub async fn add_book(&self, new: NewBook) -> Result<(Book, bool)> {
         let by = self.0.id.to_string();
         self.mutate(move |doc| {
@@ -513,6 +521,7 @@ impl Node {
     /// Opens a book: recovers an uncommitted checkpoint first, then decides where to open.
     /// A continuation from another device is saved immediately as this device's position.
     pub async fn open_book(&self, book: String) -> Result<Selection> {
+        self.restore_download(&book).await?;
         self.commit_position(book.clone()).await?;
         let selection = self.peek_position(&book)?;
         if selection.decision == Decision::Continued {
@@ -1038,6 +1047,20 @@ impl Node {
                 }
             }
         };
+        // Every further stream on this connection is a book file request (`files.rs`).
+        let file_requests = async {
+            loop {
+                let (send, recv) = conn.accept_bi().await?;
+                let node = self.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = node.serve_file(send, recv).await {
+                        tracing::debug!(%peer, "file request: {e:#}");
+                    }
+                });
+            }
+            #[allow(unreachable_code)]
+            anyhow::Ok(())
+        };
         let reader = async {
             loop {
                 match proto::read_msg::<_, SyncMsg>(&mut recv).await? {
@@ -1063,6 +1086,7 @@ impl Node {
             r = writer => r,
             r = pusher => r,
             r = reader => r,
+            r = file_requests => r,
             _ = conn.closed() => Ok(()),
             _ = closing.wait_for(|c| *c) => Ok(()),
         };
@@ -1160,6 +1184,7 @@ impl Node {
         let token = self.0.next_token.fetch_add(1, Ordering::Relaxed);
         sessions.insert(peer, Session { conn: conn.clone(), dialer, token });
         drop(sessions);
+        self.0.files.wake.notify_one();
         let _ = self.0.events.send(Event::StatusChanged);
         Ok(SessionGuard { node: self.clone(), peer, token })
     }

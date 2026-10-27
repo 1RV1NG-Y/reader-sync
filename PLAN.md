@@ -36,7 +36,7 @@ generic sync library first would double the scope for a two-app user base.
 **Separate identity from Bits**, so the two apps can never pair with each other or fight over a
 port:
 
-- ALPNs `reader/sync/1`, `reader/pair/1`, `reader/files/1`
+- ALPNs `reader/sync/1`, `reader/pair/1` (file transfers run on the sync connection, §2)
 - Pairing-code prefix `READ1` (Bits uses `BITS2`)
 - UDP port `47110` (Bits uses `47100`); firewall notes updated accordingly
 - Own data directory, own `device.key`, own app identifier `app.readersync`
@@ -50,8 +50,8 @@ every byte of every book forever. Instead:
 
 - **Replicated document (Loro)** holds metadata, positions, and *which device holds which file*.
 - **File store** holds the bytes, content-addressed, outside Loro.
-- **File protocol** (`reader/files/1`, on the same iroh endpoint) moves bytes between paired
-  devices.
+- **File protocol** moves bytes between paired devices, as extra QUIC streams on the
+  established sync connection.
 
 ### File store
 
@@ -75,9 +75,11 @@ Want { hash: [u8; 32], offset }   →   Have { size } + raw bytes from offset   
 
 Rules the implementation must enforce:
 
-- **Membership.** File connections are accepted only from devices listed in this library's
-  `devices` and not removed — the same check as `reader/sync/1`, with the peer's identity
-  authenticated by QUIC/TLS. Anything else gets `Refused` and the connection is closed.
+- **Membership.** File requests are only possible on a sync connection that has passed the
+  `reader/sync/1` checks: the peer is listed in this library's `devices` and not removed (identity
+  authenticated by QUIC/TLS), and its `Hello` named the same library. An unpaired or removed
+  device never gets such a connection, so it can't ask at all. (Implemented this way rather than
+  as a separate `reader/files/1` ALPN, which would have had to repeat the library check.)
 - **Only library files are served.** A request names a 32-byte hash, never a path. It's served
   only if that hash belongs to a non-purged book in the library and this device holds a verified
   copy; otherwise `Missing`.

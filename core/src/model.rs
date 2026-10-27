@@ -213,14 +213,20 @@ fn validate_text(what: &str, value: &str, max: usize) -> Result<()> {
     Ok(())
 }
 
+/// Formats become file extensions, so only short lowercase alphanumerics are accepted.
+pub fn validate_format(format: &str) -> Result<()> {
+    if format.is_empty() || format.len() > 10 || format == "part" || !format.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()) {
+        bail!("Unknown book format.");
+    }
+    Ok(())
+}
+
 fn validate_new(book: &NewBook) -> Result<()> {
     validate_hash(&book.hash)?;
     if book.size == 0 || book.size > MAX_BOOK_SIZE {
         bail!("Book files must be between 1 byte and {} GB.", MAX_BOOK_SIZE >> 30);
     }
-    if book.format.is_empty() || book.format.len() > 10 || !book.format.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()) {
-        bail!("Unknown book format.");
-    }
+    validate_format(&book.format)?;
     validate_text("file name", &book.original_name, 255)?;
     validate_text("title", &book.title, 500)?;
     validate_text("author", &book.author, 500)?;

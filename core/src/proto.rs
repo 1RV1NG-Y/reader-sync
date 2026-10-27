@@ -24,6 +24,17 @@ pub enum SyncMsg {
     Reject { reason: String },
 }
 
+/// Book file transfer, on extra streams of an established sync connection (so only paired
+/// devices of the same library can ask). The requester sends `Want`; the holder answers with
+/// `Have` followed by exactly `size - offset` raw bytes, or `Missing` / `Refused`.
+#[derive(Debug, Serialize, Deserialize)]
+pub enum FileMsg {
+    Want { hash: [u8; 32], offset: u64 },
+    Have { size: u64 },
+    Missing,
+    Refused { reason: String },
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum PairMsg {
     /// Scanner of a `Join` code asks to join the code owner's library.

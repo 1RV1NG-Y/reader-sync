@@ -4,7 +4,7 @@
 
 use std::{path::Path, time::Duration};
 
-use readersync_core::{BookPatch, Decision, Location, NewBook, Node, NodeConfig};
+use readersync_core::{BookPatch, Decision, ImportMeta, ImportSource, Location, NewBook, Node, NodeConfig};
 
 async fn open(dir: &Path, name: &str) -> Node {
     Node::open(NodeConfig {
@@ -175,10 +175,16 @@ async fn dual_boot_handoff_through_the_phone_only() {
     // phone durably has that exact position, and shuts down.
     let linux = open(dirs[0].path(), "Linux").await;
     phone.use_code(&linux.create_invite().unwrap().ticket).await.unwrap();
-    let (b, _) = linux.add_book(book("A Novel")).await.unwrap();
+    let bytes: Vec<u8> = (0..300_000u32).map(|i| (i * 7 % 251) as u8).collect();
+    let meta = ImportMeta { format: "epub".into(), original_name: "novel.epub".into(), title: "A Novel".into(), author: String::new() };
+    let (b, _) = linux.import_book(ImportSource::Bytes(bytes.clone()), meta).await.unwrap();
     linux.checkpoint(b.id.clone(), at("ch1")).await.unwrap();
     linux.flush_position(b.id.clone(), at("ch3")).await.unwrap();
-    wait_for("phone durably has Linux's place", || has_place(&linux, &b.id, "Phone")).await;
+    // "Phone has your place": the exact position and the verified file.
+    wait_for("phone durably has Linux's place and the file", || {
+        linux.handoff(&b.id).unwrap().iter().any(|h| h.name == "Phone" && h.has_place && h.has_file)
+    })
+    .await;
     linux.shutdown().await;
     drop(linux);
 
@@ -190,6 +196,8 @@ async fn dual_boot_handoff_through_the_phone_only() {
     wait_for("Windows got Linux's place via the phone", || opens_at(&windows, &b.id) == "ch3").await;
     let sel = windows.open_book(b.id.clone()).await.unwrap();
     assert_eq!(sel.decision, Decision::Continued);
+    wait_for("Windows got the file from the phone", || windows.book_file(&b.id).unwrap().is_some()).await;
+    assert_eq!(std::fs::read(windows.book_file(&b.id).unwrap().unwrap()).unwrap(), bytes);
     windows.flush_position(b.id.clone(), at("ch5")).await.unwrap();
     wait_for("phone durably has Windows' place", || has_place(&windows, &b.id, "Phone")).await;
     windows.shutdown().await;
