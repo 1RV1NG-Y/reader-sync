@@ -50,6 +50,15 @@ Last updated: 2026-10-27, during milestone I1 (integration).
    its own permission prerequisites; `specialUse` only if nothing else fits). Verify Doze
    behaviour (network access for a foreground service with the screen off) on the device.
 
+## Open problem: Windows CI
+
+First run (https://github.com/1RV1NG-Y/reader-sync/actions/runs/40595045546): 34/35 core tests
+pass on Windows; `node::files::tests::an_interrupted_transfer_resumes_from_the_partial_file`
+fails (panic: c)	2026-10-27T22:32:44.7608310Z thread 'node::files::tests::an_interrupted_transfer_resumes_from_the_partial_file' (8180) panicked at core\src\node\files.rs:729:9: c)	2026-10-27T22:32:44.7609989Z assertion failed: !b.only_copy(&book.id).unwrap() && !a.only_copy(&book.id).unwrap() c)	2026-10-27T22:32). Likely Windows-specific: the test shuts
+B down mid-download and reopens it; on Windows an open file (the `.part` or the store) may
+still be held, or the part length differs. Investigate, fix, push; the app build/upload steps
+were skipped because of it.
+
 ## Known gaps / notes for whoever continues
 
 - The local IndexedDB backend (`app/src/library.mjs`, `createLocalLibrary`) remains for the
