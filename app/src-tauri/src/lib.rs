@@ -28,17 +28,24 @@ async fn rpc(state: State<'_, AppNode>, method: String, params: Option<Value>) -
     readersync_core::rpc::dispatch(node(&state)?, &method, params.unwrap_or(Value::Null)).await.map_err(|e| format!("{e:#}"))
 }
 
-/// Adds a book: the file's bytes are the raw request body, and `x-import-meta` carries
-/// percent-encoded JSON `{format, originalName, title, author}`.
+/// Adds a book. Desktop: the file's bytes are the raw request body, and `x-import-meta`
+/// carries percent-encoded JSON `{format, originalName, title, author}`. Android's IPC can't
+/// carry raw bodies, so there the body is JSON `{meta, data}` with the bytes in base64.
 #[tauri::command]
 async fn import_book(state: State<'_, AppNode>, request: tauri::ipc::Request<'_>) -> Result<Value, String> {
     let node = node(&state)?;
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-        return Err("The book's bytes are missing.".into());
+    let (bytes, meta): (Vec<u8>, ImportMeta) = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => {
+            let meta = request.headers().get("x-import-meta").and_then(|v| v.to_str().ok()).ok_or("The book's details are missing.")?;
+            (bytes.clone(), serde_json::from_str(&percent_decode(meta)?).map_err(|e| e.to_string())?)
+        }
+        tauri::ipc::InvokeBody::Json(body) => {
+            let data = body.get("data").and_then(Value::as_str).ok_or("The book's bytes are missing.")?;
+            let bytes = data_encoding::BASE64.decode(data.as_bytes()).map_err(|e| format!("The book's bytes are damaged: {e}"))?;
+            (bytes, serde_json::from_value(body.get("meta").cloned().unwrap_or_default()).map_err(|e| e.to_string())?)
+        }
     };
-    let meta = request.headers().get("x-import-meta").and_then(|v| v.to_str().ok()).ok_or("The book's details are missing.")?;
-    let meta: ImportMeta = serde_json::from_str(&percent_decode(meta)?).map_err(|e| e.to_string())?;
-    let (book, added) = node.import_book(ImportSource::Bytes(bytes.clone()), meta).await.map_err(|e| format!("{e:#}"))?;
+    let (book, added) = node.import_book(ImportSource::Bytes(bytes), meta).await.map_err(|e| format!("{e:#}"))?;
     Ok(serde_json::json!({ "book": book, "added": added }))
 }
 
@@ -47,6 +54,14 @@ async fn import_book(state: State<'_, AppNode>, request: tauri::ipc::Request<'_>
 async fn book_file(state: State<'_, AppNode>, id: String) -> Result<Response, String> {
     let path = node(&state)?.book_file(&id).map_err(|e| format!("{e:#}"))?.ok_or("This book hasn't arrived on this device yet.")?;
     tokio::task::spawn_blocking(move || std::fs::read(path)).await.map_err(|e| e.to_string())?.map(Response::new).map_err(|e| e.to_string())
+}
+
+/// The bytes of a book this device holds, in base64 (Android, whose IPC can't carry raw bytes).
+#[tauri::command]
+async fn book_file_base64(state: State<'_, AppNode>, id: String) -> Result<String, String> {
+    let path = node(&state)?.book_file(&id).map_err(|e| format!("{e:#}"))?.ok_or("This book hasn't arrived on this device yet.")?;
+    let bytes = tokio::task::spawn_blocking(move || std::fs::read(path)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
+    Ok(data_encoding::BASE64.encode(&bytes))
 }
 
 /// Paths the user has dropped onto the window and the page hasn't read yet. The page can read
@@ -113,7 +128,7 @@ pub fn run() {
                 dropped.extend(paths.iter().cloned());
             }
         })
-        .invoke_handler(tauri::generate_handler![rpc, import_book, book_file, read_dropped_file])
+        .invoke_handler(tauri::generate_handler![rpc, import_book, book_file, book_file_base64, read_dropped_file])
         .run(tauri::generate_context!())
         .expect("error while running reader-sync");
 }

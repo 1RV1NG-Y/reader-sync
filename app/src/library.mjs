@@ -426,6 +426,7 @@ export function openLibrary() {
       listen: async (...args) => (await import('@tauri-apps/api/event')).listen(...args),
       covers,
       extractMetadata,
+      rawIpc: !/Android/i.test(navigator.userAgent),
     });
     // Phone back from the background, or a laptop back from sleep: retry peers right away.
     document.addEventListener('visibilitychange', () => {

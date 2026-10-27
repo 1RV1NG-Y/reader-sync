@@ -34,7 +34,19 @@ const toLocation = locator => {
   return { locator: clean, fraction: Math.min(1, Math.max(0, Number(clean.fraction) || 0)), snippet: String(clean.snippet ?? '').slice(0, 200) };
 };
 
-export function createCoreLibrary({ invoke, listen, covers, extractMetadata, checkpointDelay = 2000, onError = console.error }) {
+/** Base64 of a Blob, using the browser's native encoder. */
+const toBase64 = blob => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result).slice(String(reader.result).indexOf(',') + 1));
+  reader.onerror = () => reject(reader.error);
+  reader.readAsDataURL(blob);
+});
+
+/**
+ * `rawIpc`: book bytes cross as raw IPC bodies (desktop). Android's IPC can't carry raw bodies,
+ * so there they cross as base64 instead.
+ */
+export function createCoreLibrary({ invoke, listen, covers, extractMetadata, rawIpc = true, checkpointDelay = 2000, onError = console.error }) {
   const call = (method, params) => invoke('rpc', { method, params: params ?? null });
   const listeners = new Set();
   const emit = event => { for (const l of listeners) try { l(event); } catch (e) { onError(e); } };
@@ -209,8 +221,9 @@ export function createCoreLibrary({ invoke, listen, covers, extractMetadata, che
             continue;
           }
           const details = { format: kind, originalName: name, title: String(meta.title ?? '').trim(), author: String(meta.author ?? '').trim() };
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          const result = await invoke('import_book', bytes, { headers: { 'x-import-meta': encodeURIComponent(JSON.stringify(details)) } });
+          const result = rawIpc
+            ? await invoke('import_book', new Uint8Array(await file.arrayBuffer()), { headers: { 'x-import-meta': encodeURIComponent(JSON.stringify(details)) } })
+            : await invoke('import_book', { meta: details, data: await toBase64(file) });
           if (typeof meta.cover === 'string') await covers.set(result.book.id, meta.cover);
           await refreshBooks();
           const view = books.get(result.book.id);
@@ -227,8 +240,10 @@ export function createCoreLibrary({ invoke, listen, covers, extractMetadata, che
     async bookFile(id) {
       await ready();
       const view = books.get(id);
-      const bytes = await invoke('book_file', { id });
       const type = view?.format === 'pdf' ? 'application/pdf' : 'application/epub+zip';
+      const bytes = rawIpc
+        ? await invoke('book_file', { id })
+        : await (await fetch(`data:${type};base64,${await invoke('book_file_base64', { id })}`)).arrayBuffer();
       return new File([bytes], view?.originalName || `${id}.${view?.format ?? 'epub'}`, { type });
     },
 

@@ -6,4 +6,4 @@ commands.allow = ["read_dropped_file"]
 [[permission]]
 identifier = "allow-library"
 description = "Use the library: the sync core's rpc, and book bytes in and out."
-commands.allow = ["rpc", "import_book", "book_file"]
+commands.allow = ["rpc", "import_book", "book_file", "book_file_base64"]
