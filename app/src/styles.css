@@ -87,6 +87,17 @@ input[type='text'], input[type='search'], input:not([type]) {
   padding: 0 8px; background: var(--surface); border-bottom: 1px solid var(--border); flex: none;
 }
 .toolbar-group { display: flex; align-items: center; gap: 2px; flex: none; }
+.toolbar-spacer { flex: 1; align-self: stretch; }
+/* Linux: the window has no title bar; these sit at the end of the toolbar, in its style. */
+.window-controls { display: flex; align-items: center; gap: 2px; margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--border); height: 24px; }
+.window-control {
+  width: 34px; height: 30px; min-height: 0; padding: 0; border: none; background: transparent; color: var(--muted);
+  border-radius: 6px; display: flex; align-items: center; justify-content: center;
+}
+.window-control:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+.window-control.close:hover:not(:disabled) { color: #fff; background: var(--danger); }
+:root[data-theme='dark'] .window-control.close:hover:not(:disabled) { color: #2b0a08; }
+.app-toast { position: fixed; }
 .toolbar h1 { font-size: 17px; margin-left: 6px; }
 .brand-icon { color: var(--accent); margin-left: 6px; }
 .import-button { margin-left: 6px; }

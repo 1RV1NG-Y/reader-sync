@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BookOpen, LayoutGrid, List, Navigation, Plus } from 'lucide-react';
 import LocationDialog from './LocationDialog.jsx';
 import { IconButton, ago, formatSize, percent } from './ui.jsx';
+import WindowControls from './WindowControls.jsx';
+import { onNativeFileDrop } from './platform.mjs';
 
 const ACCEPT = '.epub,.pdf,application/epub+zip,application/pdf';
 const loadMode = () => { try { return localStorage.getItem('reader-sync.libraryView') || 'grid'; } catch { return 'grid'; } };
@@ -40,8 +42,12 @@ export default function Library({ library, onOpenBook }) {
     return () => clearTimeout(t);
   }, [message]);
 
-  const importFiles = async files => {
-    if (!files.length) return;
+  const importFiles = async (files, rejected = []) => {
+    if (!files.length && !rejected.length) return;
+    if (!files.length) {
+      setMessage({ error: true, text: rejected.map(r => `${r.name}: ${r.message}`).join(' ') });
+      return;
+    }
     setBusy(true);
     setMessage({ text: files.length === 1 ? `Adding ${files[0].name}…` : `Adding ${files.length} files…` });
     try {
@@ -50,7 +56,7 @@ export default function Library({ library, onOpenBook }) {
       if (added.length) parts.push(added.length === 1 ? `Added “${added[0].title}”.` : `Added ${added.length} books.`);
       const dup = skipped.filter(s => s.reason === 'duplicate');
       if (dup.length) parts.push(dup.length === 1 ? `“${dup[0].name}” is already in the library.` : `${dup.length} were already in the library.`);
-      for (const s of skipped.filter(s => s.reason !== 'duplicate')) parts.push(`${s.name}: ${s.message}`);
+      for (const s of [...skipped.filter(s => s.reason !== 'duplicate'), ...rejected]) parts.push(`${s.name}: ${s.message}`);
       setMessage({ text: parts.join(' ') || 'Nothing added.', error: added.length === 0 && skipped.some(s => s.reason !== 'duplicate') });
     } catch (e) {
       setMessage({ error: true, text: e.message });
@@ -66,6 +72,15 @@ export default function Library({ library, onOpenBook }) {
     onOpenBook(book.id, parsed);
   };
 
+  // Files dropped from the file manager (desktop app).
+  const importRef = useRef(importFiles);
+  importRef.current = importFiles;
+  useEffect(() => onNativeFileDrop(e => {
+    if (e.type === 'enter') setDragging(true);
+    else if (e.type === 'leave') setDragging(false);
+    else importRef.current(e.files, e.rejected);
+  }), []);
+
   const onDrop = e => {
     e.preventDefault();
     dragDepth.current = 0;
@@ -80,18 +95,20 @@ export default function Library({ library, onOpenBook }) {
       onDragOver={e => { if (hasFiles(e)) e.preventDefault(); }}
       onDragLeave={() => { if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragging(false); } }}
       onDrop={onDrop}>
-      <header className="toolbar library-toolbar">
-        <div className="toolbar-group">
-          <BookOpen className="brand-icon" size={22} aria-hidden="true" />
-          <h1>Library</h1>
+      <header className="toolbar library-toolbar" data-tauri-drag-region>
+        <div className="toolbar-group" data-tauri-drag-region>
+          <BookOpen className="brand-icon" size={22} aria-hidden="true" data-tauri-drag-region />
+          <h1 data-tauri-drag-region>Library</h1>
         </div>
-        <div className="toolbar-group">
+        <div className="toolbar-spacer" data-tauri-drag-region />
+        <div className="toolbar-group" data-tauri-drag-region>
           <IconButton icon={Navigation} label="Go to location" onClick={() => setGoTo(true)} />
           <IconButton icon={mode === 'grid' ? List : LayoutGrid} label={mode === 'grid' ? 'Show as list' : 'Show as grid'} onClick={() => setMode(m => m === 'grid' ? 'list' : 'grid')} />
           <button type="button" className="primary import-button" onClick={() => input.current.click()} disabled={busy}>
             <Plus size={18} aria-hidden="true" /> <span>Import</span>
           </button>
           <input ref={input} type="file" accept={ACCEPT} multiple hidden onChange={e => { importFiles([...e.target.files]); e.target.value = ''; }} />
+          <WindowControls />
         </div>
       </header>
 

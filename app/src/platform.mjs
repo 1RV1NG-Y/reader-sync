@@ -59,3 +59,56 @@ export async function copyText(text) {
 export async function readClipboard() {
   try { return await navigator.clipboard.readText(); } catch { return ''; }
 }
+
+/** Linux desktop: the window has no title bar, so the app draws its own controls. */
+export const ownWindowControls = () => isTauri() && !isAndroid() && /Linux/.test(navigator.userAgent);
+
+const BOOK_FILE = /\.(epub|pdf)$/i;
+const baseName = path => path.split(/[\\/]/).pop();
+
+/**
+ * Files dragged from the file manager onto the desktop window (Tauri's native drag-and-drop,
+ * which also works while reading). `handler` gets `{type: 'enter'}`, `{type: 'leave'}`, and
+ * `{type: 'drop', files: File[], rejected: [{name, message}]}`. No-op elsewhere; the browser
+ * preview uses the page's own drop events.
+ */
+export function onNativeFileDrop(handler) {
+  if (!isTauri() || isAndroid()) return () => {};
+  const off = (async () => {
+    const [{ getCurrentWebview }, { invoke }] = await Promise.all([import('@tauri-apps/api/webview'), import('@tauri-apps/api/core')]);
+    return getCurrentWebview().onDragDropEvent(async ({ payload }) => {
+      if (payload.type === 'enter') return handler({ type: 'enter' });
+      if (payload.type === 'leave') return handler({ type: 'leave' });
+      if (payload.type !== 'drop') return;
+      handler({ type: 'leave' });
+      const files = [];
+      const rejected = [];
+      for (const path of payload.paths) {
+        const name = baseName(path);
+        if (!BOOK_FILE.test(name)) {
+          rejected.push({ name, message: 'only EPUB and PDF files can be added.' });
+          continue;
+        }
+        try {
+          files.push(new File([await readDropped(invoke, path)], name));
+        } catch (e) {
+          rejected.push({ name, message: String(e?.message ?? e) });
+        }
+      }
+      handler({ type: 'drop', files, rejected });
+    });
+  })();
+  return () => { off.then(f => f()); };
+}
+
+// The window records dropped paths as the same event reaches the page, so allow it a moment.
+async function readDropped(invoke, path) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await invoke('read_dropped_file', { path });
+    } catch (e) {
+      if (attempt >= 5 || !String(e).includes('wasn’t dropped') && !String(e).includes("wasn't dropped")) throw e;
+      await new Promise(r => setTimeout(r, 50));
+    }
+  }
+}

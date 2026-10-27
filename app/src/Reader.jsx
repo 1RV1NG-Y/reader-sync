@@ -8,6 +8,7 @@ import { ArrivalBanner, ContinuedNote, DivergentChooser } from './reader/Positio
 import LocationDialog from './LocationDialog.jsx';
 import { canFullscreen, isAndroid, onBackButton, onWindowClose, toggleFullscreen } from './platform.mjs';
 import { IconButton, percent } from './ui.jsx';
+import WindowControls from './WindowControls.jsx';
 
 const COMPACT_QUERY = '(max-width: 700px), (pointer: coarse) and (max-width: 1000px)';
 function useCompact() {
@@ -250,20 +251,21 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
 
   return (
     <div className={`reader ${compact ? 'compact' : ''} ${chrome ? 'chrome-shown' : 'chrome-hidden'} ${fullscreen ? 'fullscreen' : ''}`}>
-      <header className="toolbar reader-toolbar">
-        <div className="toolbar-group">
+      <header className="toolbar reader-toolbar" data-tauri-drag-region>
+        <div className="toolbar-group" data-tauri-drag-region>
           <IconButton icon={ArrowLeft} label="Back to library" onClick={close} />
           <IconButton icon={TableOfContents} label="Contents" active={panel === 'toc'} onClick={() => openPanel('toc')} disabled={status !== 'ready'} />
           <IconButton icon={Search} label="Search in book" active={panel === 'search'} onClick={() => openPanel('search')} disabled={status !== 'ready'} />
           <IconButton icon={Navigation} label="Location: copy or go to" active={panel === 'location'} onClick={() => openPanel('location')} disabled={status !== 'ready'} />
         </div>
-        <div className="toolbar-title" title={title}>
-          <span className="title">{title}</span>
-          {!compact && where.chapter && <span className="chapter">{where.chapter}</span>}
+        <div className="toolbar-title" title={title} data-tauri-drag-region>
+          <span className="title" data-tauri-drag-region>{title}</span>
+          {!compact && where.chapter && <span className="chapter" data-tauri-drag-region>{where.chapter}</span>}
         </div>
-        <div className="toolbar-group">
+        <div className="toolbar-group" data-tauri-drag-region>
           <IconButton icon={ALargeSmall} label="Reading settings" active={panel === 'settings'} onClick={() => openPanel('settings')} />
           {canFullscreen() && <IconButton icon={fullscreen ? Minimize : Maximize} label={fullscreen ? 'Leave full screen' : 'Full screen'} onClick={fullscreenToggle} />}
+          {!fullscreen && <WindowControls />}
         </div>
       </header>
 

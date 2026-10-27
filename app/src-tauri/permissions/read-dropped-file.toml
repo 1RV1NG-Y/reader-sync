@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-read-dropped-file"
+description = "Read an EPUB or PDF the user just dropped onto the window."
+commands.allow = ["read_dropped_file"]
