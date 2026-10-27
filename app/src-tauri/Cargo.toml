@@ -1,0 +1,25 @@
+[package]
+name = "reader-sync"
+description = "reader-sync: e-book reader with local-network sync"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# Builds on its own for now: the repository's Cargo workspace excludes app/src-tauri until the
+# sync core is linked at integration (PLAN.md §8, I1).
+
+[lib]
+name = "reader_sync_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true

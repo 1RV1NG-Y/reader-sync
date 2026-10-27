@@ -1,0 +1,146 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { BookOpen, LayoutGrid, List, Navigation, Plus } from 'lucide-react';
+import LocationDialog from './LocationDialog.jsx';
+import { IconButton, ago, formatSize, percent } from './ui.jsx';
+
+const ACCEPT = '.epub,.pdf,application/epub+zip,application/pdf';
+const loadMode = () => { try { return localStorage.getItem('reader-sync.libraryView') || 'grid'; } catch { return 'grid'; } };
+
+function Cover({ book }) {
+  if (book.cover) return <img className="cover" src={book.cover} alt="" draggable="false" />;
+  return (
+    <div className="cover cover-placeholder" aria-hidden="true">
+      <span>{book.title}</span>
+      {book.author && <small>{book.author}</small>}
+    </div>
+  );
+}
+
+const progressLabel = b => b.progress > 0 || b.lastReadAt ? percent(b.progress) : 'New';
+
+export default function Library({ library, onOpenBook }) {
+  const [books, setBooks] = useState(null);
+  const [mode, setMode] = useState(loadMode);
+  const [dragging, setDragging] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [goTo, setGoTo] = useState(false);
+  const input = useRef(null);
+  const dragDepth = useRef(0);
+
+  const refresh = useCallback(() => library.listBooks().then(setBooks, e => setMessage({ error: true, text: e.message })), [library]);
+  useEffect(() => {
+    refresh();
+    return library.subscribe(e => { if (e.type === 'books') refresh(); });
+  }, [library, refresh]);
+  useEffect(() => { try { localStorage.setItem('reader-sync.libraryView', mode); } catch { /* preview */ } }, [mode]);
+  useEffect(() => {
+    if (!message || message.error) return;
+    const t = setTimeout(() => setMessage(null), 6000);
+    return () => clearTimeout(t);
+  }, [message]);
+
+  const importFiles = async files => {
+    if (!files.length) return;
+    setBusy(true);
+    setMessage({ text: files.length === 1 ? `Adding ${files[0].name}…` : `Adding ${files.length} files…` });
+    try {
+      const { added, skipped } = await library.importFiles(files);
+      const parts = [];
+      if (added.length) parts.push(added.length === 1 ? `Added “${added[0].title}”.` : `Added ${added.length} books.`);
+      const dup = skipped.filter(s => s.reason === 'duplicate');
+      if (dup.length) parts.push(dup.length === 1 ? `“${dup[0].name}” is already in the library.` : `${dup.length} were already in the library.`);
+      for (const s of skipped.filter(s => s.reason !== 'duplicate')) parts.push(`${s.name}: ${s.message}`);
+      setMessage({ text: parts.join(' ') || 'Nothing added.', error: added.length === 0 && skipped.some(s => s.reason !== 'duplicate') });
+    } catch (e) {
+      setMessage({ error: true, text: e.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const goToLocation = async parsed => {
+    if (parsed.kind !== 'token') throw new Error('Open a book first to go to a percentage or CFI. Here, paste a copied location.');
+    const book = await library.getBook(parsed.bookId);
+    if (!book) throw new Error('That location is for a book that isn’t in this library yet. Import the same file first.');
+    onOpenBook(book.id, parsed);
+  };
+
+  const onDrop = e => {
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
+    importFiles([...(e.dataTransfer?.files ?? [])]);
+  };
+  const hasFiles = e => [...(e.dataTransfer?.types ?? [])].includes('Files');
+
+  return (
+    <div className={`library ${dragging ? 'dragging' : ''}`}
+      onDragEnter={e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth.current++; setDragging(true); }}
+      onDragOver={e => { if (hasFiles(e)) e.preventDefault(); }}
+      onDragLeave={() => { if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragging(false); } }}
+      onDrop={onDrop}>
+      <header className="toolbar library-toolbar">
+        <div className="toolbar-group">
+          <BookOpen className="brand-icon" size={22} aria-hidden="true" />
+          <h1>Library</h1>
+        </div>
+        <div className="toolbar-group">
+          <IconButton icon={Navigation} label="Go to location" onClick={() => setGoTo(true)} />
+          <IconButton icon={mode === 'grid' ? List : LayoutGrid} label={mode === 'grid' ? 'Show as list' : 'Show as grid'} onClick={() => setMode(m => m === 'grid' ? 'list' : 'grid')} />
+          <button type="button" className="primary import-button" onClick={() => input.current.click()} disabled={busy}>
+            <Plus size={18} aria-hidden="true" /> <span>Import</span>
+          </button>
+          <input ref={input} type="file" accept={ACCEPT} multiple hidden onChange={e => { importFiles([...e.target.files]); e.target.value = ''; }} />
+        </div>
+      </header>
+
+      {message && <div className={`toast ${message.error ? 'error' : ''}`} role="status" onClick={() => setMessage(null)}>{message.text}</div>}
+
+      <main className="library-main">
+        {books === null ? null : books.length === 0 ? (
+          <div className="empty">
+            <BookOpen size={48} strokeWidth={1.25} aria-hidden="true" />
+            <h2>Your library is empty</h2>
+            <p>Import EPUB or PDF files, or drop them here.</p>
+            <button type="button" className="primary" onClick={() => input.current.click()}><Plus size={18} aria-hidden="true" /> Import books</button>
+          </div>
+        ) : mode === 'grid' ? (
+          <ul className="book-grid">
+            {books.map(b => (
+              <li key={b.id}>
+                <button type="button" className="book-card" onClick={() => onOpenBook(b.id)} title={`${b.title}${b.author ? ` — ${b.author}` : ''}`}>
+                  <Cover book={b} />
+                  <span className="book-title">{b.title}</span>
+                  <span className="book-author">{b.author || ' '}</span>
+                  <span className="book-progress">
+                    <span className="bar"><span style={{ width: percent(b.progress) }} /></span>
+                    <span>{progressLabel(b)}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <ul className="book-list">
+            {books.map(b => (
+              <li key={b.id}>
+                <button type="button" className="book-row" onClick={() => onOpenBook(b.id)}>
+                  <Cover book={b} />
+                  <span className="book-row-text">
+                    <span className="book-title">{b.title}</span>
+                    <span className="book-author">{b.author}</span>
+                    <span className="book-meta">{b.format.toUpperCase()} · {formatSize(b.size)}{b.lastReadAt ? ` · read ${ago(b.lastReadAt)}` : ''}</span>
+                  </span>
+                  <span className="book-progress"><span className="bar"><span style={{ width: percent(b.progress) }} /></span><span>{progressLabel(b)}</span></span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </main>
+      {dragging && <div className="drop-overlay" aria-hidden="true"><div>Drop EPUB or PDF files to add them</div></div>}
+      {goTo && <LocationDialog onGo={goToLocation} onClose={() => setGoTo(false)} />}
+    </div>
+  );
+}
