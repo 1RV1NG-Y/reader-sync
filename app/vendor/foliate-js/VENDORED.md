@@ -21,8 +21,16 @@ Everything at that commit **except**: `.git/`, `.github/`, `tests/`, `rollup/`, 
 (`reader.html`, `reader.js`, `ui/`), and the PDF.js source maps (`vendor/pdfjs/*.map`, ~7 MB;
 the `sourceMappingURL` comments that point at them are left in place and are harmless).
 
-No file was modified. Do not edit files here; if a fix is needed, patch it in our own code or
-re-vendor a newer upstream commit and update this file.
+Do not edit files here unless a fix can't be made from our own code; list every such patch
+below, and re-apply (or drop, if upstream fixed it) when re-vendoring.
+
+## Local patches
+
+- `paginator.js`, `#turnPage`: the navigation lock is released in a `finally`, and turning past
+  the first or last section does nothing. Upstream, `prev()` on the first section (or `next()`
+  on the last) called `#goTo` with an undefined index, which threw while the lock was held, so
+  every later navigation (arrows, progress bar, taps) silently did nothing. Found on Android:
+  a tap on the top quarter of the cover froze the reader.
 
 ## How the app uses it
 

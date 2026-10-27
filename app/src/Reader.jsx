@@ -78,12 +78,16 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
           live.current = locator;
           setWhere(info);
           library.checkpoint(bookId, locator);
-          // Phone: the bars get out of the way as soon as the reader moves.
-          if (compactRef.current && !panelRef.current && readyRef.current) setChrome(false);
         },
         onDocument: doc => {
           doc.addEventListener('keydown', onKey);
           doc.addEventListener('click', e => onTap(e, doc));
+          // Phone: the bars get out of the way when the reader scrolls the book with a finger.
+          // Not on relocate: those also come from the arrows and the progress bar (the bars
+          // would vanish between two taps on an arrow) and arrive up to ~0.5 s after a scroll
+          // (they would hide bars the reader had just tapped to show).
+          doc.addEventListener('touchstart', noteTouchStart, { passive: true });
+          doc.addEventListener('touchmove', hideBarsWhileReading, { passive: true });
         },
       });
       if (cancelled) { controller.destroy(); return; }
@@ -109,6 +113,14 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [library, bookId]);
+
+  const touchStartY = useRef(null);
+  function noteTouchStart(e) { touchStartY.current = e.touches[0]?.screenY ?? null; }
+  function hideBarsWhileReading(e) {
+    const y = e.touches[0]?.screenY;
+    if (touchStartY.current == null || y == null || Math.abs(y - touchStartY.current) < 12) return; // a tap's jitter
+    if (compactRef.current && !panelRef.current && readyRef.current) setChrome(false);
+  }
 
   // ── settings applied live ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -234,6 +246,18 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
   };
   const shownOf = heads => heads.map(h => ({ deviceId: h.deviceId, rev: h.rev }));
 
+  // The progress bar jumps when it's let go: the native `change` event, which fires for mouse,
+  // keyboard and touch alike. (Android often ends a touch drag with pointercancel, not
+  // pointerup, so a pointerup handler left the bar moved but the book where it was.)
+  const slider = useRef(null);
+  useEffect(() => {
+    const el = slider.current;
+    if (!el) return;
+    const go = () => reader.current?.goToFraction(Number(el.value) / 1000).catch(console.error);
+    el.addEventListener('change', go);
+    return () => el.removeEventListener('change', go);
+  }, [status]);
+
   const openPanel = name => { setPanel(p => p === name ? null : name); setChrome(true); };
   const closePanel = () => {
     if (panel === 'search') { reader.current?.clearSearch(); setSearch({ query: '', groups: [], progress: null }); }
@@ -270,7 +294,8 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
       </header>
 
       <main className="reader-main">
-        <div ref={host} className="reader-host" data-theme={settings.theme} />
+        <div ref={host} className="reader-host" data-theme={settings.theme}
+          onTouchStart={e => noteTouchStart(e.nativeEvent)} onTouchMove={e => hideBarsWhileReading(e.nativeEvent)} />
         {status === 'loading' && <div className="reader-status">Opening…</div>}
         {status?.error && (
           <div className="reader-status error" role="alert">
@@ -298,11 +323,9 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
         <IconButton icon={ChevronLeft} label={scrolled ? 'Previous chapter' : 'Previous page'} disabled={status !== 'ready'}
           onClick={() => scrolled ? r?.prevSection() : r?.goLeft()} />
         <div className="progress">
-          <input type="range" min="0" max="1000" step="1" aria-label="Position in book" disabled={status !== 'ready'}
+          <input ref={slider} type="range" min="0" max="1000" step="1" aria-label="Position in book" disabled={status !== 'ready'}
             value={Math.round((where.fraction ?? 0) * 1000)}
-            onChange={e => setWhere(w => ({ ...w, fraction: Number(e.target.value) / 1000 }))}
-            onPointerUp={e => r?.goToFraction(Number(e.currentTarget.value) / 1000)}
-            onKeyUp={e => r?.goToFraction(Number(e.currentTarget.value) / 1000)} />
+            onChange={e => setWhere(w => ({ ...w, fraction: Number(e.target.value) / 1000 }))} />
           <span className="progress-label">{[
             compact ? where.chapter : null,
             pdf && where.sectionCount ? `p. ${(where.section ?? 0) + 1} / ${where.sectionCount}` : null,

@@ -3,8 +3,10 @@
 //
 // foliate-js is vendored unbundled (vendor/foliate-js, served at ./foliate-js/) and loaded at
 // run time. Known engine behaviour, checked rather than assumed:
-// - Scrolled mode renders ONE section (chapter) at a time; reaching the end of a chapter and
-//   scrolling on (or next()) loads the next one. We don't stitch chapters.
+// - Scrolled mode renders ONE section (chapter) at a time, and foliate-js ignores touch in
+//   scrolled mode, so a swipe can't leave a chapter (or a cover that doesn't scroll at all).
+//   We add that: a swipe that starts at the end of a chapter and keeps going loads the next
+//   one, and at the start the previous one. We don't stitch chapters.
 // - In scrolled mode foliate-js reports scroll-driven relocations 250 ms after scrolling stops.
 //   `liveLocator()` closes that gap: when a scroll happened after the last relocate, it reads
 //   the location at the top of the viewport directly, so a close/background right after a
@@ -100,6 +102,38 @@ export async function openReader({ host, file, format, settings, onRelocate, onD
     report(locatorFrom(e.detail), e.detail);
   });
   view.addEventListener('load', e => onDocument?.(e.detail.doc, e.detail.index));
+
+  // Scrolled mode: swiping past the end (start) of a chapter goes to the next (previous) one.
+  // Only a swipe that *starts* at the edge counts, so the momentum of a scroll that merely
+  // reaches the end doesn't skip ahead.
+  const SWIPE = 60; // px of finger travel beyond the edge
+  let swipe = null;
+  const atEdge = () => {
+    const r = view.renderer;
+    return { start: r.start <= 1, end: r.viewSize - r.end <= 2 };
+  };
+  const onTouchStart = e => {
+    swipe = !isPDF && view.renderer.scrolled && e.touches.length === 1
+      ? { y: e.touches[0].screenY, x: e.touches[0].screenX, ...atEdge() } : null;
+  };
+  const onTouchEnd = e => {
+    const t = e.changedTouches[0];
+    if (!swipe || !t) return;
+    const dy = swipe.y - t.screenY;
+    const dx = swipe.x - t.screenX;
+    const { start, end } = swipe;
+    swipe = null;
+    if (Math.abs(dy) < SWIPE || Math.abs(dx) > Math.abs(dy)) return;
+    const now = atEdge();
+    if (dy > 0 && end && now.end) view.next().catch(console.error);
+    else if (dy < 0 && start && now.start) view.prev().catch(console.error);
+  };
+  const watchTouches = target => {
+    target.addEventListener('touchstart', onTouchStart, { passive: true });
+    target.addEventListener('touchend', onTouchEnd, { passive: true });
+  };
+  watchTouches(view);
+  view.addEventListener('load', e => watchTouches(e.detail.doc));
   // foliate-js ignores the first scroll after a programmatic jump (open, TOC, search, go-to),
   // even when that jump didn't move the scroll position; such a scroll is never reported, and
   // its internal anchor stays at the jump target, so a later re-layout (font size, window
