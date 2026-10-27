@@ -1,17 +1,11 @@
-//! The request surface shared by every front end (desktop helper, Android app).
-//! Method names and JSON shapes are what the UI calls.
+//! The request surface shared by every front end (the Tauri app on each platform).
+//! Method names and JSON shapes are what the UI's library interface calls.
 
 use anyhow::{Result, bail};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::{Node, NotePatch};
-
-#[derive(Deserialize)]
-struct UpdateParams {
-    id: String,
-    patch: NotePatch,
-}
+use crate::{BookPatch, Choice, Location, NewBook, Node, RevRef};
 
 #[derive(Deserialize)]
 struct TicketParams {
@@ -19,46 +13,99 @@ struct TicketParams {
 }
 
 #[derive(Deserialize)]
-struct ImportParams {
-    notes: Vec<crate::ImportedNote>,
+struct IdParams {
+    id: String,
 }
 
 #[derive(Deserialize)]
 struct IdsParams {
     ids: Vec<String>,
     #[serde(default)]
-    deleted: bool,
+    trashed: bool,
 }
 
 #[derive(Deserialize)]
-struct IdParams {
+struct UpdateParams {
     id: String,
+    patch: BookPatch,
+}
+
+#[derive(Deserialize)]
+struct LocationParams {
+    id: String,
+    location: Location,
+}
+
+#[derive(Deserialize)]
+struct ResolveParams {
+    id: String,
+    shown: Vec<RevRef>,
+    choice: Choice,
+}
+
+#[derive(Deserialize)]
+struct SettingsParams {
+    patch: serde_json::Map<String, Value>,
 }
 
 pub async fn dispatch(node: &Node, method: &str, params: Value) -> Result<Value> {
+    let p = params;
     Ok(match method {
         "status" => serde_json::to_value(node.status())?,
-        "notes" => serde_json::to_value(node.notes())?,
-        "createNote" => serde_json::to_value(node.create_note(serde_json::from_value(params)?).await?)?,
-        "updateNote" => {
-            let p: UpdateParams = serde_json::from_value(params)?;
-            serde_json::to_value(node.update_note(p.id, p.patch).await?)?
+        "books" => serde_json::to_value(node.books())?,
+        "addBook" => {
+            let (book, added) = node.add_book(serde_json::from_value::<NewBook>(p)?).await?;
+            serde_json::json!({ "book": book, "added": added })
         }
-        "importNotes" => {
-            let p: ImportParams = serde_json::from_value(params)?;
-            serde_json::to_value(node.import_notes(p.notes).await?)?
+        "updateBook" => {
+            let p: UpdateParams = serde_json::from_value(p)?;
+            serde_json::to_value(node.update_book(p.id, p.patch).await?)?
         }
-        "setDeleted" => {
-            let p: IdsParams = serde_json::from_value(params)?;
-            serde_json::to_value(node.set_deleted(p.ids, p.deleted).await?)?
+        "setTrashed" => {
+            let p: IdsParams = serde_json::from_value(p)?;
+            serde_json::to_value(node.set_trashed(p.ids, p.trashed).await?)?
         }
         "deleteForever" => {
-            let p: IdsParams = serde_json::from_value(params)?;
+            let p: IdsParams = serde_json::from_value(p)?;
             serde_json::to_value(node.delete_forever(p.ids).await?)?
+        }
+        "openBook" => {
+            let p: IdParams = serde_json::from_value(p)?;
+            serde_json::to_value(node.open_book(p.id).await?)?
+        }
+        "peekPosition" => {
+            let p: IdParams = serde_json::from_value(p)?;
+            serde_json::to_value(node.peek_position(&p.id)?)?
+        }
+        "resolvePosition" => {
+            let p: ResolveParams = serde_json::from_value(p)?;
+            serde_json::to_value(node.resolve_position(p.id, p.shown, p.choice).await?)?
+        }
+        "checkpoint" => {
+            let p: LocationParams = serde_json::from_value(p)?;
+            serde_json::to_value(node.checkpoint(p.id, p.location).await?)?
+        }
+        "flushPosition" => {
+            let p: LocationParams = serde_json::from_value(p)?;
+            serde_json::to_value(node.flush_position(p.id, p.location).await?)?
+        }
+        "commitPosition" => {
+            let p: IdParams = serde_json::from_value(p)?;
+            node.commit_position(p.id).await?;
+            Value::Null
+        }
+        "handoff" => {
+            let p: IdParams = serde_json::from_value(p)?;
+            serde_json::to_value(node.handoff(&p.id)?)?
+        }
+        "settings" => Value::Object(node.settings()),
+        "setSettings" => {
+            let p: SettingsParams = serde_json::from_value(p)?;
+            Value::Object(node.set_settings(p.patch).await?)
         }
         "createInvite" => serde_json::to_value(node.create_invite()?)?,
         "join" => {
-            let p: TicketParams = serde_json::from_value(params)?;
+            let p: TicketParams = serde_json::from_value(p)?;
             serde_json::to_value(node.use_code(&p.ticket).await?)?
         }
         "networkChanged" => {
@@ -66,7 +113,7 @@ pub async fn dispatch(node: &Node, method: &str, params: Value) -> Result<Value>
             Value::Null
         }
         "removeDevice" => {
-            let p: IdParams = serde_json::from_value(params)?;
+            let p: IdParams = serde_json::from_value(p)?;
             node.remove_device(p.id).await?;
             Value::Null
         }

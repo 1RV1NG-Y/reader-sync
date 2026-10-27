@@ -1,6 +1,6 @@
 [package]
-name = "bits-sync"
-description = "Replicated storage and peer-to-peer sync core for the Bits prototype"
+name = "readersync-core"
+description = "Replicated library, reading positions and peer-to-peer sync for reader-sync"
 edition.workspace = true
 version.workspace = true
 

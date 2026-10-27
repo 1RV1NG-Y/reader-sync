@@ -5,12 +5,12 @@ use iroh::EndpointAddr;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-pub const SYNC_ALPN: &[u8] = b"bits/sync/1";
-pub const PAIR_ALPN: &[u8] = b"bits/pair/1";
+pub const SYNC_ALPN: &[u8] = b"reader/sync/1";
+pub const PAIR_ALPN: &[u8] = b"reader/pair/1";
 /// Bumped whenever messages or document layout change incompatibly.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 1;
 const MAX_FRAME: usize = 128 * 1024 * 1024;
-const TICKET_PREFIX: &str = "BITS2";
+const TICKET_PREFIX: &str = "READ1";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum SyncMsg {
@@ -85,7 +85,7 @@ impl Ticket {
 
     pub fn decode(text: &str) -> Result<Self> {
         let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_uppercase();
-        let body = cleaned.strip_prefix(TICKET_PREFIX).context("This isn't a bits invitation.")?;
+        let body = cleaned.strip_prefix(TICKET_PREFIX).context("This isn't a reader-sync invitation.")?;
         let bytes = data_encoding::BASE32_NOPAD
             .decode(body.as_bytes())
             .ok()

@@ -4,7 +4,7 @@
 
 use std::{path::Path, time::Duration};
 
-use bits_sync::{Node, NodeConfig, NotePatch};
+use readersync_core::{BookPatch, Decision, Location, NewBook, Node, NodeConfig};
 
 async fn open(dir: &Path, name: &str) -> Node {
     Node::open(NodeConfig {
@@ -26,12 +26,27 @@ async fn wait_for(what: &str, mut cond: impl FnMut() -> bool) {
     }
 }
 
-fn body(text: &str) -> NotePatch {
-    NotePatch { body: Some(text.into()), ..Default::default() }
+/// A distinct book per title (the hash is derived from the title).
+fn book(title: &str) -> NewBook {
+    let hash: String = (0..32).map(|i| format!("{:02x}", title.bytes().fold(i as u8, |a, b| a.wrapping_mul(31).wrapping_add(b)))).collect();
+    NewBook { hash, size: 1000, format: "epub".into(), original_name: format!("{title}.epub"), title: title.into(), author: String::new() }
 }
 
-fn has(node: &Node, text: &str) -> bool {
-    node.notes().iter().any(|n| n.body == text)
+fn has(node: &Node, title: &str) -> bool {
+    node.books().iter().any(|b| b.book.title == title)
+}
+
+fn at(cfi: &str) -> Location {
+    Location { locator: serde_json::json!({ "cfi": cfi }), fraction: 0.5, snippet: cfi.into() }
+}
+
+fn opens_at(node: &Node, id: &str) -> String {
+    let sel = node.peek_position(id).unwrap();
+    sel.position.map(|p| p.record.locator["cfi"].as_str().unwrap().to_owned()).unwrap_or_default()
+}
+
+fn has_place(node: &Node, id: &str, device: &str) -> bool {
+    node.handoff(id).unwrap().iter().any(|h| h.name == device && h.has_place)
 }
 
 fn connected(a: &Node, b: &Node) -> bool {
@@ -41,7 +56,7 @@ fn connected(a: &Node, b: &Node) -> bool {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn pair_forward_merge_restart_and_remove() {
-    let _ = tracing_subscriber::fmt().with_env_filter("bits_sync=debug").with_test_writer().try_init();
+    let _ = tracing_subscriber::fmt().with_env_filter("readersync_core=debug").with_test_writer().try_init();
     let dirs: Vec<_> = (0..3).map(|_| tempfile::tempdir().unwrap()).collect();
     let a = open(dirs[0].path(), "Linux").await;
     let b = open(dirs[1].path(), "Phone").await;
@@ -58,9 +73,9 @@ async fn pair_forward_merge_restart_and_remove() {
     .await;
     assert!(second.unwrap_err().to_string().contains("already using"));
 
-    // Notes made before pairing are kept and merged.
-    a.create_note(body("from A before pairing")).await.unwrap();
-    b.create_note(body("from B before pairing")).await.unwrap();
+    // Books added before pairing are kept and merged.
+    a.add_book(book("from A before pairing")).await.unwrap();
+    b.add_book(book("from B before pairing")).await.unwrap();
 
     // A invites B; B invites C. A and C never pair directly.
     let invite = a.create_invite().unwrap();
@@ -70,7 +85,7 @@ async fn pair_forward_merge_restart_and_remove() {
     assert!(b.use_code(&a.create_invite().unwrap().ticket).await.is_err(), "already paired");
 
     wait_for("B connected to A and C", || connected(&b, &a) && connected(&b, &c)).await;
-    wait_for("pre-pairing notes everywhere", || {
+    wait_for("pre-pairing books everywhere", || {
         [&a, &b, &c].iter().all(|n| has(n, "from A before pairing") && has(n, "from B before pairing"))
     })
     .await;
@@ -78,9 +93,9 @@ async fn pair_forward_merge_restart_and_remove() {
     // Membership propagates: A now knows about C through B.
     wait_for("A trusts C", || a.status().devices.iter().any(|d| d.name == "Windows")).await;
 
-    // Forwarding: a note from A reaches C through B.
-    let note = a.create_note(body("hello from A")).await.unwrap();
-    wait_for("C received A's note", || has(&c, "hello from A")).await;
+    // Forwarding: a book from A reaches C through B.
+    let (note, _) = a.add_book(book("hello from A")).await.unwrap();
+    wait_for("C received A's book", || has(&c, "hello from A")).await;
     wait_for("A sees B confirmed it", || {
         a.status().devices.iter().any(|d| d.name == "Phone" && d.has_all_my_changes)
     })
@@ -90,17 +105,17 @@ async fn pair_forward_merge_restart_and_remove() {
     })
     .await;
 
-    // Concurrent edits to different fields of one note combine.
+    // Concurrent edits to different fields of one book combine.
     let (ra, rc) = tokio::join!(
-        a.update_note(note.id.clone(), NotePatch { title: Some("Title from A".into()), ..Default::default() }),
-        c.update_note(note.id.clone(), NotePatch { favorite: Some(true), ..Default::default() }),
+        a.update_book(note.id.clone(), BookPatch { title: Some("Title from A".into()), ..Default::default() }),
+        c.update_book(note.id.clone(), BookPatch { author: Some("Author from C".into()), ..Default::default() }),
     );
     ra.unwrap();
     rc.unwrap();
     for n in [&a, &b, &c] {
         let id = note.id.clone();
         wait_for("fields combined", || {
-            n.notes().iter().any(|x| x.id == id && x.title == "Title from A" && x.favorite)
+            n.books().iter().any(|x| x.book.id == id && x.book.title == "Title from A" && x.book.author == "Author from C")
         })
         .await;
     }
@@ -108,9 +123,9 @@ async fn pair_forward_merge_restart_and_remove() {
     // Restart B while A keeps editing; B catches up after reopening from disk.
     b.shutdown().await;
     drop(b);
-    a.create_note(body("written while B was off")).await.unwrap();
+    a.add_book(book("written while B was off")).await.unwrap();
     let b = open(dirs[1].path(), "Phone").await;
-    assert!(has(&b, "hello from A"), "B kept its data across the restart");
+    assert!(has(&b, "Title from A"), "B kept its data across the restart");
     wait_for("B reconnected and caught up", || has(&b, "written while B was off")).await;
     wait_for("C got it through B", || has(&c, "written while B was off")).await;
 
@@ -119,26 +134,26 @@ async fn pair_forward_merge_restart_and_remove() {
     b.shutdown().await;
     drop((a, b));
     let a = open(dirs[0].path(), "Linux").await;
-    a.create_note(body("offline on A")).await.unwrap();
+    a.add_book(book("offline on A")).await.unwrap();
     a.shutdown().await;
     drop(a);
     let b = open(dirs[1].path(), "Phone").await;
-    b.create_note(body("offline on B")).await.unwrap();
+    b.add_book(book("offline on B")).await.unwrap();
     let a = open(dirs[0].path(), "Linux").await;
     wait_for("offline edits converge", || {
         [&a, &b].iter().all(|n| has(n, "offline on A") && has(n, "offline on B"))
     })
     .await;
 
-    // Deleting moves to Trash and replicates.
-    let doomed = a.notes().into_iter().find(|n| n.body == "offline on A").unwrap();
-    a.update_note(doomed.id.clone(), NotePatch { deleted: Some(true), ..Default::default() }).await.unwrap();
-    wait_for("delete replicated to C", || c.notes().iter().any(|n| n.id == doomed.id && n.deleted)).await;
+    // Trash replicates.
+    let doomed = a.books().into_iter().find(|b| b.book.title == "offline on A").unwrap();
+    a.set_trashed(vec![doomed.book.id.clone()], true).await.unwrap();
+    wait_for("Trash replicated to C", || c.books().iter().any(|b| b.book.id == doomed.book.id && b.book.trashed)).await;
 
     // Removing C closes its sessions and stops further changes reaching it.
     a.remove_device(c.id().to_string()).await.unwrap();
     wait_for("B dropped C", || !connected(&b, &c)).await;
-    a.create_note(body("after removing C")).await.unwrap();
+    a.add_book(book("after removing C")).await.unwrap();
     wait_for("B received it", || has(&b, "after removing C")).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
     assert!(!has(&c, "after removing C"));
@@ -149,51 +164,49 @@ async fn pair_forward_merge_restart_and_remove() {
 }
 
 
-/// The real use: Linux and Windows are never running at the same time (dual boot), so
-/// every change must travel through the phone, in both directions.
+/// The real use: Linux and Windows are never running at the same time (dual boot), so the
+/// book and the reading position must travel through the phone, in both directions.
 #[tokio::test(flavor = "multi_thread")]
 async fn dual_boot_handoff_through_the_phone_only() {
     let dirs: Vec<_> = (0..3).map(|_| tempfile::tempdir().unwrap()).collect();
     let phone = open(dirs[1].path(), "Phone").await;
 
-    // Linux pairs with the phone, edits, waits for "received by Phone", shuts down.
+    // Linux pairs with the phone, adds a book, reads, closes it (flush), waits until the
+    // phone durably has that exact position, and shuts down.
     let linux = open(dirs[0].path(), "Linux").await;
     phone.use_code(&linux.create_invite().unwrap().ticket).await.unwrap();
-    let from_linux = linux.create_note(body("written on Linux")).await.unwrap();
-    wait_for("phone durably has Linux's note", || {
-        linux.status().devices.iter().any(|d| d.name == "Phone" && d.has_all_my_changes)
-    })
-    .await;
+    let (b, _) = linux.add_book(book("A Novel")).await.unwrap();
+    linux.checkpoint(b.id.clone(), at("ch1")).await.unwrap();
+    linux.flush_position(b.id.clone(), at("ch3")).await.unwrap();
+    wait_for("phone durably has Linux's place", || has_place(&linux, &b.id, "Phone")).await;
     linux.shutdown().await;
     drop(linux);
 
-    // Windows boots and shows its code; the phone scans it (a PC can't scan). Windows then
-    // receives Linux's note from the phone.
+    // Windows boots and shows its code; the phone scans it (a PC can't scan). Windows opens
+    // the book where Linux stopped, automatically.
     let windows = open(dirs[2].path(), "Windows").await;
-    let added = phone.use_code(&windows.create_invite().unwrap().ticket).await.unwrap();
-    assert!(!added.joined && added.device == "Windows");
-    wait_for("Windows got Linux's note via the phone", || has(&windows, "written on Linux")).await;
-    windows
-        .update_note(from_linux.id.clone(), NotePatch { title: Some("edited on Windows".into()), ..Default::default() })
-        .await
-        .unwrap();
-    windows.create_note(body("written on Windows")).await.unwrap();
-    phone.create_note(body("written on the phone between boots")).await.unwrap();
-    wait_for("phone durably has Windows' changes", || {
-        windows.status().devices.iter().any(|d| d.name == "Phone" && d.has_all_my_changes)
-    })
-    .await;
+    phone.use_code(&windows.create_invite().unwrap().ticket).await.unwrap();
+    wait_for("Windows got the book via the phone", || has(&windows, "A Novel")).await;
+    wait_for("Windows got Linux's place via the phone", || opens_at(&windows, &b.id) == "ch3").await;
+    let sel = windows.open_book(b.id.clone()).await.unwrap();
+    assert_eq!(sel.decision, Decision::Continued);
+    windows.flush_position(b.id.clone(), at("ch5")).await.unwrap();
+    wait_for("phone durably has Windows' place", || has_place(&windows, &b.id, "Phone")).await;
     windows.shutdown().await;
     drop(windows);
 
-    // Linux boots again and gets everything from the phone.
+    // The phone reads a bit between boots: a continuation of Windows' session.
+    let sel = phone.open_book(b.id.clone()).await.unwrap();
+    assert_eq!((sel.decision, opens_at(&phone, &b.id)), (Decision::Continued, "ch5".into()));
+    phone.flush_position(b.id.clone(), at("ch6")).await.unwrap();
+
+    // Linux boots again and continues from the phone, though it never saw Windows directly
+    // and its own last position is older in every sense but the clock.
     let linux = open(dirs[0].path(), "Linux").await;
-    wait_for("Linux got Windows' and the phone's changes", || {
-        has(&linux, "written on Windows")
-            && has(&linux, "written on the phone between boots")
-            && linux.notes().iter().any(|n| n.id == from_linux.id && n.title == "edited on Windows")
-    })
-    .await;
+    wait_for("Linux got the phone's place", || opens_at(&linux, &b.id) == "ch6").await;
+    let sel = linux.open_book(b.id.clone()).await.unwrap();
+    assert_eq!(sel.decision, Decision::Continued);
+    assert_eq!(sel.mine.unwrap().record.locator["cfi"], "ch3", "Back to where I was here is offered");
     // Linux learned about Windows only through the phone.
     assert!(linux.status().devices.iter().any(|d| d.name == "Windows" && !d.connected));
     linux.shutdown().await;

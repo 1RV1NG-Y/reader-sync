@@ -19,8 +19,8 @@ use std::{
 use anyhow::{Context, Result, bail};
 use loro::{ExportMode, LoroDoc, VersionVector};
 
-const LOG_MAGIC: &[u8; 8] = b"BITSLOG1";
-const SNAPSHOT_MAGIC: &[u8; 8] = b"BITSSNP1";
+const LOG_MAGIC: &[u8; 8] = b"RSYNLOG1";
+const SNAPSHOT_MAGIC: &[u8; 8] = b"RSYNSNP1";
 const MAX_RECORD: usize = 256 * 1024 * 1024;
 /// Compact into a fresh snapshot once the log grows past this size.
 const COMPACT_AT: u64 = 4 * 1024 * 1024;
@@ -185,7 +185,7 @@ impl DocStore {
 
 fn unwrap_snapshot(bytes: &[u8]) -> Result<&[u8]> {
     if bytes.len() < 12 || &bytes[..8] != SNAPSHOT_MAGIC {
-        bail!("not a bits snapshot");
+        bail!("not a reader-sync snapshot");
     }
     let crc = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
     let body = &bytes[12..];
@@ -211,7 +211,7 @@ fn read_log(path: &Path) -> Result<(Vec<Vec<u8>>, u64, u64)> {
         return Ok((vec![], 0, 0));
     }
     if bytes.len() < 8 || &bytes[..8] != LOG_MAGIC {
-        bail!("library.log is not a bits log; it has been left untouched");
+        bail!("library.log is not a reader-sync log; it has been left untouched");
     }
     let mut records = Vec::new();
     let mut pos = 8usize;
