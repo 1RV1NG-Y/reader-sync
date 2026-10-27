@@ -15,23 +15,20 @@ Last updated: 2026-10-27, during milestone I1 (integration).
 | Linux: no title bar, controls in the toolbar; native file drop | `524a451` | WebDriver screenshots; user tried drop |
 | Android reader fixes (foliate-js lock patch, slider, edge swipes, bars) | `d4c1751` | real touch over adb on Galaxy S22 |
 | I1 part 1: app on the core, Devices, handoff indicator, arrivals | `9d1dfe9` | `app/tests/e2e/two-instances.py` (two desktop instances) |
+| Android on the core (base64 book bytes over Android IPC) | `77f9f4b` | phone: A1 library migrated (book, position, theme), book opens |
+| Desktop migration of the A1 library | (no code change) | ran on a copy of the user's real data: 2 books + positions + theme |
 
 ## I1 — what's left
 
-1. **Android build with the core** — not built yet since linking the core. Build with
-   `cd app && npm run android:build` (debug-signed release; SDK at `~/Android/Sdk`, see
-   `scripts/build-apk.mjs`), install with `adb install -r app/android-dist/reader-sync.apk`
-   (phone: `adb mdns services` shows its wireless-debugging address; `adb connect` it).
-   Check: the app starts (no "library could not start" error), the A1 IndexedDB library is
-   migrated (Ted Chiang book stays, with position), Devices → Scan code opens the camera.
-   For debugging the WebView: `npx tauri android build --debug --apk --target aarch64` (needs
-   `ANDROID_HOME=~/Android/Sdk NDK_HOME=~/Android/Sdk/ndk/<ver> JAVA_HOME=/usr/lib/jvm/java-21-openjdk`),
-   install `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`,
-   then `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>` and use the
-   DevTools protocol. Reinstall the release APK afterwards.
-2. **Migration check on desktop** — the user's real Linux library (A1, IndexedDB under
-   `~/.local/share/app.readersync`) migrates on first launch of this build. Not yet observed;
-   test on a copy first (`XDG_DATA_HOME=<copy>`), then let the user launch the real app.
+1. ~~Android build with the core~~ done (see table). Debugging the phone's WebView:
+   `npx tauri android build --debug --apk --target aarch64` (env: `ANDROID_HOME=~/Android/Sdk
+   NDK_HOME=~/Android/Sdk/ndk/<ver> JAVA_HOME=/usr/lib/jvm/java-21-openjdk`), install
+   `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`,
+   `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`, use the DevTools
+   protocol; reinstall the release APK (`npm run android:build`) afterwards.
+2. ~~Desktop migration~~ verified on a copy; the real data migrates on the user's first launch.
+   **Firewall:** the user's Linux has ufw active with rules only for Bits (47100, 5353). The
+   reader needs UDP 47110 from the LAN: `sudo ufw allow from 192.168.100.0/24 to any port 47110 proto udp`.
 3. **Pair the phone and the Linux app for real**, then the I1 checks in PLAN.md §8 on real
    devices (the user does the Windows boot): import on Linux → ✓ phone → shut down → Windows
    resumes at the passage; scroll-then-close; Wi-Fi off mid-transfer; kill mid-reading;
