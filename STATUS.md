@@ -86,7 +86,17 @@ should be inferred from a successful APK build.
 - Native node lifecycle regression passed three stop/reopen cycles with the same identity.
 - Three isolated test books/positions reached the phone and were durably acknowledged,
   including over a fresh connection while the app was backgrounded.
-- **Locked-screen and Doze reliability is NOT verified.** The display was later found awake
+- **Locked-screen and Doze: verified 2026-10-27 (Claude), service as of `d8159fc`, no battery
+  exemption.** Real Linux app (driven over WebDriver) ↔ S22, using only Astra's three test books:
+  1. Screen off (`mWakefulness=Dozing`, display `DOZE`, confirmed before and after): link still
+     up after 60 s; a flushed position was durably acknowledged by the phone in 509 ms.
+  2. Deep Doze (`dumpsys battery unplug` + `deviceidle force-idle`, state `IDLE` before and
+     after): link up after 45 s; acknowledged in 510 ms.
+  3. Fresh connection in deep Doze (Linux app closed for ~35 s, restarted): reconnected at
+     once, acknowledged in 503 ms.
+  Restored afterwards: `deviceidle unforce`, `battery reset`. Not yet covered: hours-long
+  endurance/battery cost, notification permission denial, Pause/Resume, service recreation.
+- (Superseded) Locked-screen and Doze reliability was not verified at Astra's handoff. The display was later found awake
   during successful receipts. A confirmed screen-off/forced-IDLE state was reached, but no
   new receipt test completed in that state before the user's stop request.
 - Next: verify receipt AND fresh connection with the screen confirmed off; test Doze with
