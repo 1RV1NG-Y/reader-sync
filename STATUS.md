@@ -113,6 +113,13 @@ should be inferred from a successful APK build.
 The user requested a prompt handoff because over 60% of the five-hour usage allowance was
 spent. Use narrowly scoped subagents sparingly; do not restart parallel implementation teams.
 
+## Installed on the user's Linux
+
+`npm run install:linux` (in `app/`) builds a release and installs it for the user:
+`~/.local/share/reader-sync/reader-sync`, menu entry `~/.local/share/applications/reader-sync.desktop`
+(named after the binary so GNOME matches the window on Wayland), icons in hicolor. Re-run it
+after changes to update the installed app. Launch from the menu ("reader-sync").
+
 ## Known gaps / notes for whoever continues
 
 - The local IndexedDB backend (`app/src/library.mjs`, `createLocalLibrary`) remains for the

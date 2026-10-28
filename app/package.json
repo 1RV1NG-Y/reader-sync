@@ -13,7 +13,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "android:build": "node scripts/build-apk.mjs"
+    "android:build": "node scripts/build-apk.mjs",
+    "install:linux": "tauri build --no-bundle && node scripts/install-linux.mjs"
   },
   "dependencies": {
     "@tauri-apps/plugin-barcode-scanner": "^2.5.1",

@@ -37,6 +37,7 @@ Status: under active development — see [STATUS.md](STATUS.md) for what works t
 cargo test -p readersync-core          # core: storage, positions, files, multi-device sync
 cd app && npm ci && npm test           # UI logic
 cd app && npx tauri build --debug --no-bundle    # desktop app → target/debug/reader-sync
+cd app && npm run install:linux        # release build, installed for this user with a menu entry
 cd app && npm run android:build        # debug-signed arm64 APK → app/android-dist/ (Android SDK + NDK)
 ```
 
