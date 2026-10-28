@@ -3,7 +3,8 @@
 Read `PLAN.md` first (the agreed design; §8 is the work plan). This file says what is done,
 what is verified, and exactly what is left, so work can resume from here.
 
-Last updated: 2026-10-27, during milestone I1 (integration).
+Last updated: 2026-10-28. Milestone I1 (integration) is implemented; what remains of it is
+testing on real devices, starting with the user's Windows boot.
 
 ## Done
 
@@ -16,109 +17,92 @@ Last updated: 2026-10-27, during milestone I1 (integration).
 | Android reader fixes (foliate-js lock patch, slider, edge swipes, bars) | `d4c1751` | real touch over adb on Galaxy S22 |
 | I1 part 1: app on the core, Devices, handoff indicator, arrivals | `9d1dfe9` | `app/tests/e2e/two-instances.py` (two desktop instances) |
 | Android on the core (base64 book bytes over Android IPC) | `77f9f4b` | phone: A1 library migrated (book, position, theme), book opens |
-| Desktop migration of the A1 library | (no code change) | ran on a copy of the user's real data: 2 books + positions + theme |
+| Desktop migration of the A1 library | (no code change) | user's real Linux data migrated on first launch |
+| Public repo, README, MIT license, Windows CI that builds the app | `7bde440` | CI green on every push since `bdee757` |
+| Pending checkpoints kept across idle commits; stale "has your place" rejected | `6e58c02` | 4 backend regression tests; two-instance test checks the receiving reader's position |
+| Android background sync: `connectedDevice` foreground service | `d8159fc` | S22: screen off 60 s, forced deep Doze, and a fresh connection in Doze — each position durably acked in ~0.5 s (details below) |
+| Linux install with a menu entry (`npm run install:linux`) | `79def67` | installed on the user's PC, launched from the menu |
 
-## I1 — what's left
+## Current state of the user's devices
 
-1. ~~Android build with the core~~ done (see table). Debugging the phone's WebView:
-   `npx tauri android build --debug --apk --target aarch64` (env: `ANDROID_HOME=~/Android/Sdk
-   NDK_HOME=~/Android/Sdk/ndk/<ver> JAVA_HOME=/usr/lib/jvm/java-21-openjdk`), install
-   `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`,
-   `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`, use the DevTools
-   protocol; reinstall the release APK (`npm run android:build`) afterwards.
-2. ~~Desktop migration~~ verified on a copy; the real data migrates on the user's first launch.
-   **Firewall:** the user's Linux has ufw active with rules only for Bits (47100, 5353). The
-   reader needs UDP 47110 from the LAN: `sudo ufw allow from 192.168.100.0/24 to any port 47110 proto udp`.
-3. **Phone/Linux pairing is done.** Finish the I1 checks in PLAN.md §8 on real
-   devices (the user does the Windows boot): import on Linux → ✓ phone → shut down → Windows
-   resumes at the passage; scroll-then-close; Wi-Fi off mid-transfer; kill mid-reading;
-   divergence prompt; screen-off handoff with the phone locked.
-4. **Windows CI app build** — public repo https://github.com/1RV1NG-Y/reader-sync; the
-   `Windows` workflow runs core + app tests, builds the app and uploads
-   `reader-sync-windows-x64` (the exe). Download: `gh run download <run id> -n reader-sync-windows-x64`.
-   Check the latest run with `gh run list --limit 1`.
-5. **Android background measurement — done, and it decides the next step.** Measured with the
-   reader itself on the Galaxy S22 (Android 16), 2026-10-27, paired with the Linux app: while
-   the app is in the foreground, sessions hold; when the screen goes off (power button) or the
-   app is backgrounded, the session times out ~10 s later (8 s QUIC idle timeout) and the
-   phone stops syncing. So the phone is unreachable in ordinary use (phone in pocket while
-   reading on the PC) → per PLAN §5/§8, **Android background work is now part of I1**:
-   keep the process (the Rust node runs in it, independent of the WebView) alive while
-   needed, choosing the foreground-service type from the workload (keep a LAN listener
-   alive; receive small updates and occasional files) against Android's documented types
-   (`dataSync` is limited to 6 h/24 h for apps targeting Android 15+; `connectedDevice` has
-   its own permission prerequisites; `specialUse` only if nothing else fits). Verify Doze
-   behaviour (network access for a foreground service with the screen off) on the device.
+- **Linux:** release build installed at `~/.local/share/reader-sync/reader-sync`, menu entry
+  "reader-sync". Update after changes with `npm run install:linux` in `app/`. Library data is in
+  the Tauri app-data dir (`~/.local/share/app.readersync/library`), shared with dev builds.
+- **Phone (Galaxy S22, Android 16):** release APK from `d8159fc` installed, paired with Linux,
+  background service running. Rebuild with `npm run android:build` (output
+  `app/android-dist/reader-sync.apk`, git-ignored), then `adb install -r`.
+- **Windows:** not installed yet. The exe comes from CI: `gh run list --limit 1`, then
+  `gh run download <run id> -n reader-sync-windows-x64` (latest green run: `40619126843`).
+- **Library:** Accelerando, A Canticle for Leibowitz, Stories of Your Life and Others. Astra's
+  three test books were trashed and deleted forever on 2026-10-27; the phone acked it.
+- **Firewall:** the user's Linux runs ufw. The reader needs UDP 47110 from the LAN:
+  `sudo ufw allow from 192.168.100.0/24 to any port 47110 proto udp` (check it's in place if
+  the phone can't connect).
 
-## Codex handoff — stopping at the user's usage-budget request
+## I1 — what's left (real-device checks, PLAN §8)
 
-### Completed and verified
+1. **The dual-boot test (user, next):** on Linux, read until Devices/reader shows "SM-S901E has
+   your place" → shut down → boot Windows → run the exe → Devices → "Show this device's code"
+   → scan it from the phone → Windows receives the books → open the book → it resumes at the
+   same passage. Windows Firewall must allow the app on the private network (it usually asks
+   on first run; if pairing hangs, check that).
+2. Scroll on, and confirm the ✓ turns off at once and returns only after the phone acks.
+3. Scroll and close immediately → the other device resumes at the closing location.
+4. Phone Wi-Fi off halfway through a book's transfer, back on → transfer resumes.
+5. Kill the app mid-reading → reopens at the last checkpoint.
+6. Read offline on two devices → divergence prompt; choose → no prompt elsewhere.
+7. Android service, not yet exercised: notification permission denied, Pause/Resume from the
+   notification, service recreated after the process is killed, battery cost over hours, and
+   Doze with the optional battery exemption on.
 
-- `bdee757`: corrected the Windows interrupted-transfer test's holdings-propagation race.
-  The download itself had succeeded; the assertion ran before the peer learned the new
-  holding. All 35 core unit tests and 2 integration tests passed locally. Windows run
-  `40616459713` passed its core/app tests and is still compiling the app at handoff;
-  check its final result and artifact before claiming Windows is ready.
-- `6e58c02`: fixes pending checkpoints being discarded by an older idle commit, and prevents
-  old save/handoff responses from showing a false “has your place” after newer movement.
-  Four new backend regression tests pass, all frontend tests pass, and Linux builds.
-  The two-instance UI test now asserts transferred CFI equality and the receiving reader's
-  actual position; it passed (target 0.6, reopened 0.599655). Optional screenshots were removed
-  from that test because WebKit's screenshot request hung under this compositor.
+## Android background sync — evidence
 
-### Android background implementation
+Measured 2026-10-27 with the reader itself, real Linux app (driven over WebDriver) ↔ S22, no
+battery exemption, using only test books:
 
-Native service/runtime/plugin implementation is now present (not the earlier partial bridge):
-`connectedDevice` foreground service, persistent notification with Pause, CPU/Wi-Fi/multicast
-locks, network-change callbacks, Devices → Background LAN sync controls, optional battery
-exemption, and shared Rust node ownership with stop/reopen support. It uses the existing
-`app.readersync` identity and library path. A signed release APK built successfully.
+1. Screen off (`mWakefulness=Dozing`, display `DOZE`, confirmed before and after): link still up
+   after 60 s; a flushed position durably acked by the phone in 509 ms.
+2. Deep Doze (`dumpsys battery unplug` + `deviceidle force-idle`, state `IDLE` before and after):
+   link up after 45 s; acked in 510 ms.
+3. Fresh connection in deep Doze (Linux app closed ~35 s, restarted): reconnected at once, acked
+   in 503 ms.
 
-See the phone-test result below before treating background sync as verified. Remaining work
-includes real Linux → phone → Windows handoff, Wi-Fi interruption and kill-mid-read tests,
-position-conflict UI checks, and battery/endurance measurement. No additional implementation
-should be inferred from a successful APK build.
+Restored afterwards (`deviceidle unforce`, `battery reset`). Before the service existed, the
+phone stopped syncing ~10 s after the screen went off (8 s QUIC idle timeout).
 
-### Phone test results and immediate next steps
+Implementation (Astra): `connectedDevice` foreground service with a persistent notification and
+Pause, CPU/Wi-Fi/multicast locks, network-change callbacks, Devices → "Background LAN sync"
+controls, optional battery-exemption flow (implemented, not tested). The Rust node is owned by
+the Android runtime (`app/src-tauri/src/android.rs`, `node_slot.rs`; Kotlin in
+`gen/android/.../LanSyncService.kt`, `LanSyncRuntime.kt`, `LanSyncPlugin.kt`) so it survives
+the activity being recreated. `cargo test -p reader-sync --lib node_slot` covers stop/reopen.
 
-- Latest signed APK is installed on the S22 using `adb install -r`; books and pairing
-  preserved. The `connectedDevice` foreground service was observed running.
-- Native node lifecycle regression passed three stop/reopen cycles with the same identity.
-- Three isolated test books/positions reached the phone and were durably acknowledged,
-  including over a fresh connection while the app was backgrounded.
-- **Locked-screen and Doze: verified 2026-10-27 (Claude), service as of `d8159fc`, no battery
-  exemption.** Real Linux app (driven over WebDriver) ↔ S22, using only Astra's three test books:
-  1. Screen off (`mWakefulness=Dozing`, display `DOZE`, confirmed before and after): link still
-     up after 60 s; a flushed position was durably acknowledged by the phone in 509 ms.
-  2. Deep Doze (`dumpsys battery unplug` + `deviceidle force-idle`, state `IDLE` before and
-     after): link up after 45 s; acknowledged in 510 ms.
-  3. Fresh connection in deep Doze (Linux app closed for ~35 s, restarted): reconnected at
-     once, acknowledged in 503 ms.
-  Restored afterwards: `deviceidle unforce`, `battery reset`. Not yet covered: hours-long
-  endurance/battery cost, notification permission denial, Pause/Resume, service recreation.
-- (Superseded) Locked-screen and Doze reliability was not verified at Astra's handoff. The display was later found awake
-  during successful receipts. A confirmed screen-off/forced-IDLE state was reached, but no
-  new receipt test completed in that state before the user's stop request.
-- Next: verify receipt AND fresh connection with the screen confirmed off; test Doze with
-  and without the optional battery exemption. Then exercise notification permission
-  grant/denial, Pause/Resume/reopen, and sticky service recreation on the phone.
-- Temporary forced idle and simulated battery state were reset; original battery exemption
-  state is unchanged (not exempt). Notification permission was not granted by tests.
-  The app/service remains running normally. Test helpers were stopped.
-- The three test books were moved to Trash and deleted forever on 2026-10-27 (Linux; the phone
-  acknowledged the deletion). No real reading positions were changed.
-  Local cleanup IDs: `/tmp/reader-phone-test-ids.jsonl`. Full native evidence and helper
-  locations: `/tmp/reader-android-handoff.md`. Build log: `/tmp/reader-sync-android-build.log`.
+## Next milestone: D — daily driver (not started)
 
-The user requested a prompt handoff because over 60% of the five-hour usage allowance was
-spent. Use narrowly scoped subagents sparingly; do not restart parallel implementation teams.
+From PLAN §8, plus what came up since:
+- Trash / remove download / delete forever UI (the core has `setTrashed`, `removeDownload`,
+  `onlyCopy`, `deleteForever`; no UI yet).
+- Metadata editing, covers, library sorting/search, device rename.
+- "Publisher styles: on/off" reading setting (e.g. Accelerando's fixed-height headings).
+- PDF support. **Dark/sepia for PDFs:** recolour the rendered page so paper → theme background
+  and ink → theme text (a CSS/SVG colour filter, not just `invert`), plus a per-book
+  "Original colours" switch for comics and photo-heavy PDFs (images get recoloured too).
+- Android "Open with" + share target; desktop "Open with" (handle a file passed at launch,
+  then add `MimeType=application/epub+zip;application/pdf;` back to the desktop entry in
+  `app/scripts/install-linux.mjs`).
+- Import from Foliate / Thorium / Moon+ folders (positions where readable).
 
-## Installed on the user's Linux
+## Testing tools
 
-`npm run install:linux` (in `app/`) builds a release and installs it for the user:
-`~/.local/share/reader-sync/reader-sync`, menu entry `~/.local/share/applications/reader-sync.desktop`
-(named after the binary so GNOME matches the window on Wayland), icons in hicolor. Re-run it
-after changes to update the installed app. Launch from the menu ("reader-sync").
+- Linux app under WebDriver: `TAURI_WEBVIEW_AUTOMATION=true` + `WebKitWebDriver`;
+  `app/tests/e2e/two-instances.py` runs two instances (`READER_SYNC_DEVICE_NAME` sets names).
+- Android WebView: build `npx tauri android build --debug --apk --target aarch64` (env
+  `ANDROID_HOME=~/Android/Sdk NDK_HOME=~/Android/Sdk/ndk/<ver>
+  JAVA_HOME=/usr/lib/jvm/java-21-openjdk`), install the universal debug APK,
+  `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`, drive it over the
+  DevTools protocol; reinstall the release APK afterwards. Real touch: `adb shell input`.
+- The phone is on wireless adb; in fish/zsh use `set -x ANDROID_SERIAL <ip:port>` /
+  `export ANDROID_SERIAL=...` rather than an `adb -s` alias variable.
 
 ## Known gaps / notes for whoever continues
 
@@ -127,8 +111,8 @@ after changes to update the installed app. Launch from the menu ("reader-sync").
 - `app/vendor/foliate-js/paginator.js` carries one local patch (see `VENDORED.md`); a test in
   `app/tests/config.test.mjs` fails if it's lost.
 - Book covers are not synced: each device makes its own from its copy of the file.
-- Trash / remove download / delete forever exist in the core (RPC `setTrashed`,
-  `removeDownload`, `onlyCopy`, `deleteForever`) but have no UI yet (milestone D).
+- WebKit's screenshot request can hang under the user's compositor; the e2e test doesn't use it.
 - User preferences: no title bars on Linux apps (window controls in the app's own style);
   don't re-propose settled decisions (e.g. the phone is the bridge); the app must work for
-  ordinary setups, not only the user's dual boot.
+  ordinary setups, not only the user's dual boot. The user may hit usage limits — keep this
+  file current after each step.
