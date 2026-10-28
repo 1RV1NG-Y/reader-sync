@@ -726,8 +726,11 @@ mod tests {
         assert!(part > 0, "the partial file is kept");
         wait_for("the download finished", || holds(&b, &book)).await;
         assert!(hooks(&b).requested_offsets[0] > 0, "resumed, not restarted");
-        assert!(!b.only_copy(&book.id).unwrap() && !a.only_copy(&book.id).unwrap());
+        assert_eq!(std::fs::read(b.book_file(&book.id).unwrap().unwrap()).unwrap(), std::fs::read(a.book_file(&book.id).unwrap().unwrap()).unwrap(), "the resumed file matches the original");
+        // Completing the download records the phone's holding locally; Linux learns it
+        // asynchronously through document sync before its only-copy warning can clear.
         wait_for("Linux sees the phone holds it", || a.handoff(&book.id).unwrap().iter().any(|h| h.name == "Phone" && h.has_file)).await;
+        assert!(!b.only_copy(&book.id).unwrap() && !a.only_copy(&book.id).unwrap());
         a.shutdown().await;
         b.shutdown().await;
     }

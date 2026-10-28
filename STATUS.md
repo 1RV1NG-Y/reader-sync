@@ -50,14 +50,28 @@ Last updated: 2026-10-27, during milestone I1 (integration).
    its own permission prerequisites; `specialUse` only if nothing else fits). Verify Doze
    behaviour (network access for a foreground service with the screen off) on the device.
 
-## Open problem: Windows CI
+## Windows CI fix and interrupted implementation
 
-First run (https://github.com/1RV1NG-Y/reader-sync/actions/runs/40595045546): 34/35 core tests
-pass on Windows; `node::files::tests::an_interrupted_transfer_resumes_from_the_partial_file`
-fails (panic: c)	2026-10-27T22:32:44.7608310Z thread 'node::files::tests::an_interrupted_transfer_resumes_from_the_partial_file' (8180) panicked at core\src\node\files.rs:729:9: c)	2026-10-27T22:32:44.7609989Z assertion failed: !b.only_copy(&book.id).unwrap() && !a.only_copy(&book.id).unwrap() c)	2026-10-27T22:32). Likely Windows-specific: the test shuts
-B down mid-download and reopens it; on Windows an open file (the `.part` or the store) may
-still be held, or the part length differs. Investigate, fix, push; the app build/upload steps
-were skipped because of it.
+The first Windows run failed at the `only_copy` assertion after the interrupted download
+had already resumed and finished. This was a holdings-propagation race in the test, not
+an established Windows file-handle problem. The test now waits for Linux to learn Phone's
+holding before checking both devices, and compares the completed file with the original.
+Validation: all 35 core unit tests and 2 integration tests passed locally. A Windows run
+with this fix is still required.
+
+The implementation agents hit their usage limit. Uncommitted work is preserved for review:
+
+- `app/src/library-core.mjs` and `app/src/positions.mjs`: partial checkpoint scheduling and
+  handoff-generation changes. Regression tests and Reader/Handoff wiring are unfinished.
+- `app/src-tauri/src/android.rs`, `src/lib.rs`, `Cargo.toml`, and the generated ACL manifest:
+  partial Android service bridge. Kotlin service/plugin implementation is missing; this
+  must not be treated as a working Android build or installed on the phone yet.
+- No new phone installation or idle-mode test was performed. Existing phone data and pairing
+  are unchanged. The user authorized those tests once a complete build is ready.
+
+Use at most one narrowly scoped subagent at a time; parallel agents exhausted the user's
+usage allowance. Review unfinished changes before continuing, and do not publish them as
+completed features.
 
 ## Known gaps / notes for whoever continues
 
