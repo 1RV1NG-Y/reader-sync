@@ -105,7 +105,8 @@ should be inferred from a successful APK build.
 - Temporary forced idle and simulated battery state were reset; original battery exemption
   state is unchanged (not exempt). Notification permission was not granted by tests.
   The app/service remains running normally. Test helpers were stopped.
-- Three test books remain in paired libraries; no real reading positions were changed.
+- The three test books were moved to Trash and deleted forever on 2026-10-27 (Linux; the phone
+  acknowledged the deletion). No real reading positions were changed.
   Local cleanup IDs: `/tmp/reader-phone-test-ids.jsonl`. Full native evidence and helper
   locations: `/tmp/reader-android-handoff.md`. Build log: `/tmp/reader-sync-android-build.log`.
 
