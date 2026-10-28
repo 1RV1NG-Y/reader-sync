@@ -29,7 +29,7 @@ Last updated: 2026-10-27, during milestone I1 (integration).
 2. ~~Desktop migration~~ verified on a copy; the real data migrates on the user's first launch.
    **Firewall:** the user's Linux has ufw active with rules only for Bits (47100, 5353). The
    reader needs UDP 47110 from the LAN: `sudo ufw allow from 192.168.100.0/24 to any port 47110 proto udp`.
-3. **Pair the phone and the Linux app for real**, then the I1 checks in PLAN.md §8 on real
+3. **Phone/Linux pairing is done.** Finish the I1 checks in PLAN.md §8 on real
    devices (the user does the Windows boot): import on Linux → ✓ phone → shut down → Windows
    resumes at the passage; scroll-then-close; Wi-Fi off mid-transfer; kill mid-reading;
    divergence prompt; screen-off handoff with the phone locked.
@@ -50,28 +50,57 @@ Last updated: 2026-10-27, during milestone I1 (integration).
    its own permission prerequisites; `specialUse` only if nothing else fits). Verify Doze
    behaviour (network access for a foreground service with the screen off) on the device.
 
-## Windows CI fix and interrupted implementation
+## Codex handoff — stopping at the user's usage-budget request
 
-The first Windows run failed at the `only_copy` assertion after the interrupted download
-had already resumed and finished. This was a holdings-propagation race in the test, not
-an established Windows file-handle problem. The test now waits for Linux to learn Phone's
-holding before checking both devices, and compares the completed file with the original.
-Validation: all 35 core unit tests and 2 integration tests passed locally. A Windows run
-with this fix is still required.
+### Completed and verified
 
-The implementation agents hit their usage limit. Uncommitted work is preserved for review:
+- `bdee757`: corrected the Windows interrupted-transfer test's holdings-propagation race.
+  The download itself had succeeded; the assertion ran before the peer learned the new
+  holding. All 35 core unit tests and 2 integration tests passed locally. Windows run
+  `40616459713` passed its core/app tests and is still compiling the app at handoff;
+  check its final result and artifact before claiming Windows is ready.
+- `6e58c02`: fixes pending checkpoints being discarded by an older idle commit, and prevents
+  old save/handoff responses from showing a false “has your place” after newer movement.
+  Four new backend regression tests pass, all frontend tests pass, and Linux builds.
+  The two-instance UI test now asserts transferred CFI equality and the receiving reader's
+  actual position; it passed (target 0.6, reopened 0.599655). Optional screenshots were removed
+  from that test because WebKit's screenshot request hung under this compositor.
 
-- `app/src/library-core.mjs` and `app/src/positions.mjs`: partial checkpoint scheduling and
-  handoff-generation changes. Regression tests and Reader/Handoff wiring are unfinished.
-- `app/src-tauri/src/android.rs`, `src/lib.rs`, `Cargo.toml`, and the generated ACL manifest:
-  partial Android service bridge. Kotlin service/plugin implementation is missing; this
-  must not be treated as a working Android build or installed on the phone yet.
-- No new phone installation or idle-mode test was performed. Existing phone data and pairing
-  are unchanged. The user authorized those tests once a complete build is ready.
+### Android background implementation
 
-Use at most one narrowly scoped subagent at a time; parallel agents exhausted the user's
-usage allowance. Review unfinished changes before continuing, and do not publish them as
-completed features.
+Native service/runtime/plugin implementation is now present (not the earlier partial bridge):
+`connectedDevice` foreground service, persistent notification with Pause, CPU/Wi-Fi/multicast
+locks, network-change callbacks, Devices → Background LAN sync controls, optional battery
+exemption, and shared Rust node ownership with stop/reopen support. It uses the existing
+`app.readersync` identity and library path. A signed release APK built successfully.
+
+See the phone-test result below before treating background sync as verified. Remaining work
+includes real Linux → phone → Windows handoff, Wi-Fi interruption and kill-mid-read tests,
+position-conflict UI checks, and battery/endurance measurement. No additional implementation
+should be inferred from a successful APK build.
+
+### Phone test results and immediate next steps
+
+- Latest signed APK is installed on the S22 using `adb install -r`; books and pairing
+  preserved. The `connectedDevice` foreground service was observed running.
+- Native node lifecycle regression passed three stop/reopen cycles with the same identity.
+- Three isolated test books/positions reached the phone and were durably acknowledged,
+  including over a fresh connection while the app was backgrounded.
+- **Locked-screen and Doze reliability is NOT verified.** The display was later found awake
+  during successful receipts. A confirmed screen-off/forced-IDLE state was reached, but no
+  new receipt test completed in that state before the user's stop request.
+- Next: verify receipt AND fresh connection with the screen confirmed off; test Doze with
+  and without the optional battery exemption. Then exercise notification permission
+  grant/denial, Pause/Resume/reopen, and sticky service recreation on the phone.
+- Temporary forced idle and simulated battery state were reset; original battery exemption
+  state is unchanged (not exempt). Notification permission was not granted by tests.
+  The app/service remains running normally. Test helpers were stopped.
+- Three test books remain in paired libraries; no real reading positions were changed.
+  Local cleanup IDs: `/tmp/reader-phone-test-ids.jsonl`. Full native evidence and helper
+  locations: `/tmp/reader-android-handoff.md`. Build log: `/tmp/reader-sync-android-build.log`.
+
+The user requested a prompt handoff because over 60% of the five-hour usage allowance was
+spent. Use narrowly scoped subagents sparingly; do not restart parallel implementation teams.
 
 ## Known gaps / notes for whoever continues
 

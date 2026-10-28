@@ -2,6 +2,12 @@
 export const isTauri = () => !!globalThis.__TAURI_INTERNALS__;
 export const isAndroid = () => /Android/i.test(navigator.userAgent);
 
+export async function androidSyncControls() {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('android_sync_controls');
+}
+androidSyncControls.available = isTauri() && isAndroid();
+
 /** Toggles fullscreen: the Tauri window on desktop, the Fullscreen API in a browser. */
 export async function toggleFullscreen() {
   if (isTauri() && !isAndroid()) {

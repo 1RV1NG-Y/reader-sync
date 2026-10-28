@@ -4465,6 +4465,7 @@ name = "reader-sync"
 version = "0.1.0"
 dependencies = [
  "data-encoding",
+ "jni 0.21.1",
  "libc",
  "readersync-core",
  "serde_json",

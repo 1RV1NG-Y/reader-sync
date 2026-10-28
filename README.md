@@ -14,8 +14,9 @@ Status: under active development — see [STATUS.md](STATUS.md) for what works t
 
 ## Features
 
-- EPUB (and PDF) reading with [foliate-js](https://github.com/johnfactotum/foliate-js),
-  scrolled or paginated, with font, size, spacing, margins and themes.
+- EPUB reading with [foliate-js](https://github.com/johnfactotum/foliate-js), scrolled or
+  paginated, with font, size, spacing, margins and themes. PDFs currently use a single-page
+  viewer, without EPUB's scrolling and text settings.
 - Library sync: import a book on one device and it downloads on the others, verified by its
   BLAKE3 hash; interrupted transfers resume.
 - Reading positions per device, chosen without trusting clocks: continuing on another device

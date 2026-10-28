@@ -25,3 +25,7 @@
 -keep class com.google.android.gms.common.** { *; }
 -keep class com.google.firebase.components.** { *; }
 -dontwarn com.google.mlkit.**
+
+# Tauri loads the plugin and calls commands by reflection; Rust resolves JNI by class name.
+-keep class app.readersync.LanSyncPlugin { *; }
+-keep class app.readersync.LanSyncRuntime { *; }

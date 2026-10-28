@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ClipboardPaste, Copy, Laptop, Monitor, QrCode, ScanLine, Smartphone } from 'lucide-react';
 import { Sheet, ago } from './ui.jsx';
-import { copyText, scanQrCode } from './platform.mjs';
+import { androidSyncControls, copyText, scanQrCode } from './platform.mjs';
 
 const PlatformIcon = ({ platform }) =>
   platform === 'android' ? <Smartphone size={18} aria-hidden="true" />
@@ -53,6 +53,7 @@ export default function Devices({ library, onClose }) {
   return (
     <Sheet side="right" title="Devices" onClose={onClose} className="devices">
       <p className="hint">Your books and reading positions sync directly between your devices over your Wi-Fi network. No account or cloud service is involved.</p>
+      {androidSyncControls.available && <button type="button" onClick={() => run(androidSyncControls)}>Background LAN sync</button>}
 
       <section>
         <h3>This device</h3>

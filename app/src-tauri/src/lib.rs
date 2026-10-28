@@ -6,6 +6,11 @@
 use std::{collections::HashSet, path::PathBuf, sync::Mutex};
 
 use readersync_core::{Event, ImportMeta, ImportSource, Node, NodeConfig};
+
+#[cfg(target_os = "android")]
+mod android;
+#[cfg(any(target_os = "android", test))]
+mod node_slot;
 use serde_json::Value;
 use tauri::{DragDropEvent, Emitter, Manager, State, WindowEvent, ipc::Response};
 
@@ -13,19 +18,28 @@ use tauri::{DragDropEvent, Emitter, Manager, State, WindowEvent, ipc::Response};
 const MAX_BOOK_SIZE: u64 = 2 * 1024 * 1024 * 1024;
 
 /// The node, or why it couldn't start (the UI shows it instead of the app crashing).
+#[cfg(not(target_os = "android"))]
 struct AppNode(Result<Node, String>);
+// The Android runtime owns the node. A clone here would keep a shut-down node's file lock
+// alive and prevent a later service/activity restart from reopening the library.
+#[cfg(target_os = "android")]
+struct AppNode;
 
 /// One node per process. Android can recreate the activity (and rerun setup) inside a live
 /// process; a second node on the same files and port must never be opened.
+#[cfg(not(target_os = "android"))]
 static NODE: std::sync::OnceLock<Node> = std::sync::OnceLock::new();
 
-fn node<'a>(state: &'a State<'_, AppNode>) -> Result<&'a Node, String> {
-    state.0.as_ref().map_err(Clone::clone)
+fn node(state: &State<'_, AppNode>) -> Result<Node, String> {
+    #[cfg(target_os = "android")]
+    { let _ = state; android::node() }
+    #[cfg(not(target_os = "android"))]
+    { state.0.as_ref().cloned().map_err(Clone::clone) }
 }
 
 #[tauri::command]
 async fn rpc(state: State<'_, AppNode>, method: String, params: Option<Value>) -> Result<Value, String> {
-    readersync_core::rpc::dispatch(node(&state)?, &method, params.unwrap_or(Value::Null)).await.map_err(|e| format!("{e:#}"))
+    readersync_core::rpc::dispatch(&node(&state)?, &method, params.unwrap_or(Value::Null)).await.map_err(|e| format!("{e:#}"))
 }
 
 /// Adds a book. Desktop: the file's bytes are the raw request body, and `x-import-meta`
@@ -86,15 +100,35 @@ fn read_dropped_file(path: PathBuf, dropped: State<'_, DroppedPaths>) -> Result<
     std::fs::read(&path).map(Response::new).map_err(|e| e.to_string())
 }
 
+
+/// Opens Android's native LAN listening controls; absent from browser/desktop UI.
+#[tauri::command]
+async fn android_sync_controls(_app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        let handle = _app.state::<android::Controls>();
+        handle.0.run_mobile_plugin_async::<Value>("showControls", Value::Null)
+            .await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_logging();
     let builder = tauri::Builder::default();
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android::plugin());
     builder
         .manage(DroppedPaths::default())
         .setup(|app| {
+            #[cfg(target_os = "android")]
+            if let Err(error) = android::attach(app.handle().clone(), app.path().app_data_dir()?.join("library")) {
+                tracing::error!("the Android library could not start: {error}");
+            }
+            #[cfg(not(target_os = "android"))]
             let node = match NODE.get() {
                 Some(node) => Ok(node.clone()),
                 None => {
@@ -113,10 +147,14 @@ pub fn run() {
                     })
                 }
             };
+            #[cfg(not(target_os = "android"))]
             if let Ok(node) = &node {
                 forward_events(app.handle().clone(), node);
             }
+            #[cfg(not(target_os = "android"))]
             app.manage(AppNode(node));
+            #[cfg(target_os = "android")]
+            app.manage(AppNode);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -128,7 +166,7 @@ pub fn run() {
                 dropped.extend(paths.iter().cloned());
             }
         })
-        .invoke_handler(tauri::generate_handler![rpc, import_book, book_file, book_file_base64, read_dropped_file])
+        .invoke_handler(tauri::generate_handler![rpc, import_book, book_file, book_file_base64, read_dropped_file, android_sync_controls])
         .run(tauri::generate_context!())
         .expect("error while running reader-sync");
 }
