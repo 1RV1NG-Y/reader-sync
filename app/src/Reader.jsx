@@ -29,6 +29,7 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
   const host = useRef(null);
   const reader = useRef(null); // engine controller
   const live = useRef(null); // last relocate locator
+  const movement = useRef(0);
   const settingsRef = useRef(settings);
   const [book, setBook] = useState(null);
   const [status, setStatus] = useState('loading'); // 'loading' | 'ready' | { error }
@@ -55,7 +56,9 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
   const liveLocator = useCallback(() => reader.current?.liveLocator() ?? live.current, []);
   const flush = useCallback(() => {
     const locator = liveLocator();
-    return locator ? library.flushPosition(bookId, locator) : Promise.resolve();
+    if (!locator) return Promise.resolve();
+    setMoved(true);
+    return library.flushPosition(bookId, locator, ++movement.current);
   }, [library, bookId, liveLocator]);
 
   const close = useCallback(async () => {
@@ -83,8 +86,9 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
           live.current = locator;
           setWhere(info);
           setMoved(true);
-          library.checkpoint(bookId, locator);
+          library.checkpoint(bookId, locator, ++movement.current);
         },
+        onMovement: () => { movement.current++; setMoved(true); },
         onDocument: doc => {
           doc.addEventListener('keydown', onKey);
           doc.addEventListener('click', e => onTap(e, doc));
@@ -167,7 +171,9 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
     };
   }, [flush, close, library, bookId]);
 
-  useEffect(() => library.subscribe(e => { if (e.type === 'saved' && e.bookId === bookId) setMoved(false); }), [library, bookId]);
+  useEffect(() => library.subscribe(e => {
+    if (e.type === 'saved' && e.bookId === bookId && e.current !== false && e.token === movement.current) setMoved(false);
+  }), [library, bookId]);
 
   // ── another device's position arrives while reading → banner, never a jump ────────────────
   useEffect(() => library.subscribe(e => {

@@ -45,7 +45,7 @@ export function bookAuthor(metadata) {
  *                   tocHref, section, sectionCount, reason }
  * @param onDocument (doc, index) for each loaded section document (key/tap listeners)
  */
-export async function openReader({ host, file, format, settings, onRelocate, onDocument }) {
+export async function openReader({ host, file, format, settings, onRelocate, onDocument, onMovement }) {
   const { makeBook } = await loadFoliate();
   const parsed = await makeBook(file);
   // PDFs: one page at a time, centred (foliate-js would otherwise pair pages into spreads).
@@ -142,6 +142,7 @@ export async function openReader({ host, file, format, settings, onRelocate, onD
   let settleTimer;
   view.renderer.addEventListener('scroll', () => {
     scrolledSinceRelocate = true;
+    onMovement?.();
     clearTimeout(settleTimer);
     if (!isPDF) settleTimer = setTimeout(settle, 400);
   });

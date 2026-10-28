@@ -112,26 +112,50 @@ export function createCoreLibrary({ invoke, listen, covers, extractMetadata, raw
   };
 
   // Positions: debounced local checkpoints in the core; replicated at least every 30 s and on
-  // section change. Flushes and decisions go through `exclusive`, after any pending write.
+  // section change. Only a live flush or decision may replace a pending checkpoint.
   const lastCommit = new Map(); // bookId → { at, section }
   const idleCommits = new Map(); // bookId → timer
-  const commit = async (bookId, section) => {
+  const generations = new Map(); // bookId → latest requested save (including pending writes)
+  const persisted = new Map(); // bookId → { generation, section } of the completed save
+  const cancelIdleCommit = bookId => {
     clearTimeout(idleCommits.get(bookId));
+    idleCommits.delete(bookId);
+  };
+  const beginSave = bookId => {
+    cancelIdleCommit(bookId);
+    const generation = (generations.get(bookId) ?? 0) + 1;
+    generations.set(bookId, generation);
+    emit({ type: 'saving', bookId });
+    return generation;
+  };
+  const saved = (bookId, generation, locator, token) => {
+    persisted.set(bookId, { generation, section: locator.section });
+    emit({ type: 'saved', bookId, token, current: generations.get(bookId) === generation });
+  };
+  const commit = async (bookId, section = persisted.get(bookId)?.section) => {
+    cancelIdleCommit(bookId);
     await call('commitPosition', { id: bookId });
     lastCommit.set(bookId, { at: Date.now(), section });
   };
   const checkpointer = createCheckpointer({
     delay: checkpointDelay,
     onError,
-    write: async (bookId, locator) => {
+    write: async (bookId, { locator, generation, token }) => {
       await call('checkpoint', { id: bookId, location: toLocation(locator) });
       const last = lastCommit.get(bookId);
       if (!last || Date.now() - last.at > COMMIT_EVERY_MS || last.section !== locator.section) await commit(bookId, locator.section);
-      else {
-        clearTimeout(idleCommits.get(bookId));
-        idleCommits.set(bookId, setTimeout(() => checkpointer.exclusive(bookId, () => commit(bookId, locator.section)).catch(onError), COMMIT_WHEN_IDLE_MS));
+      else if (generations.get(bookId) === generation) {
+        cancelIdleCommit(bookId);
+        const timer = setTimeout(() => {
+          if (idleCommits.get(bookId) !== timer) return;
+          idleCommits.delete(bookId);
+          checkpointer.serialize(bookId, () => {
+            if (generations.get(bookId) === generation) return commit(bookId, locator.section);
+          }).catch(onError);
+        }, COMMIT_WHEN_IDLE_MS);
+        idleCommits.set(bookId, timer);
       }
-      emit({ type: 'saved', bookId });
+      saved(bookId, generation, locator, token);
     },
   });
 
@@ -249,10 +273,15 @@ export function createCoreLibrary({ invoke, listen, covers, extractMetadata, raw
 
     async openBook(id) {
       await ready();
-      await checkpointer.flush(id);
-      const sel = await checkpointer.exclusive(id, () => call('openBook', { id }));
+      const flushed = checkpointer.flush(id);
+      const sel = await checkpointer.serialize(id, async () => {
+        await flushed;
+        cancelIdleCommit(id);
+        const selection = await call('openBook', { id });
+        lastCommit.set(id, { at: Date.now(), section: selection.position?.locator?.section });
+        return selection;
+      });
       watch(id, sel.heads);
-      lastCommit.set(id, { at: Date.now(), section: sel.position?.locator?.section });
       return {
         position: sel.position?.locator ?? null,
         decision: sel.decision,
@@ -268,24 +297,44 @@ export function createCoreLibrary({ invoke, listen, covers, extractMetadata, raw
       if (choice?.pick) core = { head: { device: choice.pick.deviceId, rev: choice.pick.rev } };
       else if (choice?.stay) core = { here: toLocation(choice.stay) };
       else throw new Error('resolvePosition needs { pick } or { stay }.');
-      const placed = await checkpointer.exclusive(id, () => call('resolvePosition', { id, shown, choice: core }));
+      const generation = beginSave(id);
+      const placed = await checkpointer.exclusive(id, async () => {
+        cancelIdleCommit(id);
+        const result = await call('resolvePosition', { id, shown, choice: core });
+        lastCommit.set(id, { at: Date.now(), section: result.locator.section });
+        saved(id, generation, result.locator);
+        return result;
+      });
       for (const h of shown) watched.get(id)?.add(`${h.device}:${h.rev}`);
       return placed.locator;
     },
 
-    checkpoint(id, locator) {
-      checkpointer.checkpoint(id, cleanLocator(locator));
+    // `token` belongs to the caller; it never crosses IPC. An older async save must not clear
+    // movement recorded by the reader while that save was in flight (even via the lazy proxy).
+    checkpoint(id, locator, token) {
+      locator = cleanLocator(locator);
+      const generation = beginSave(id);
+      checkpointer.checkpoint(id, { locator, generation, token });
     },
 
-    async flushPosition(id, locator) {
+    async flushPosition(id, locator, token) {
       if (!locator) {
-        await checkpointer.flush(id);
-        return checkpointer.exclusive(id, () => call('commitPosition', { id }));
+        cancelIdleCommit(id);
+        const flushed = checkpointer.flush(id);
+        return checkpointer.serialize(id, async () => {
+          await flushed;
+          await commit(id);
+        });
       }
-      clearTimeout(idleCommits.get(id));
-      await checkpointer.exclusive(id, () => call('flushPosition', { id, location: toLocation(locator) }));
-      lastCommit.set(id, { at: Date.now(), section: locator.section });
-      emit({ type: 'saved', bookId: id });
+      locator = cleanLocator(locator);
+      const generation = beginSave(id);
+      await checkpointer.exclusive(id, async () => {
+        // An earlier in-flight checkpoint may have installed a timer since beginSave.
+        cancelIdleCommit(id);
+        await call('flushPosition', { id, location: toLocation(locator) });
+        lastCommit.set(id, { at: Date.now(), section: locator.section });
+        saved(id, generation, locator, token);
+      });
     },
 
     async getSettings() {
@@ -307,7 +356,16 @@ export function createCoreLibrary({ invoke, listen, covers, extractMetadata, raw
 
     // ── sync ──
     async status() { await ready(); return refreshStatus(); },
-    handoff: id => call('handoff', { id }),
+    async handoff(id) {
+      const generation = generations.get(id) ?? 0;
+      const isSaved = () => (persisted.get(id)?.generation ?? 0) === (generations.get(id) ?? 0);
+      const savedAtStart = isSaved();
+      const devices = await call('handoff', { id });
+      // The core cannot see locations still in our debounce/IPC queue. Also reject an answer
+      // fetched before movement, even if the newer save completed while the RPC was in flight.
+      const current = savedAtStart && isSaved() && generation === (generations.get(id) ?? 0);
+      return current ? devices : devices.map(device => ({ ...device, hasPlace: false }));
+    },
     downloads: () => call('downloads'),
     retryDownloads: () => call('retryDownloads'),
     createInvite: () => call('createInvite'),

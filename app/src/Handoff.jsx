@@ -23,11 +23,17 @@ export default function Handoff({ library, bookId, moved, onHandOff, compact }) 
     if (!library.handoff) return;
     let alive = true;
     let timer = null;
-    const load = () => library.handoff(bookId).then(d => { if (alive) { setDevices(d); setStale(false); } }, () => {});
+    let epoch = 0;
+    const load = () => {
+      const request = ++epoch;
+      return library.handoff(bookId).then(d => {
+        if (alive && request === epoch) { setDevices(d); setStale(false); }
+      }, () => {});
+    };
     load();
     const off = library.subscribe(e => {
-      if (e.type === 'saved' && e.bookId === bookId) setStale(true);
-      if ((e.type === 'status' || e.type === 'saved' || e.type === 'books') && !timer) timer = setTimeout(() => { timer = null; load(); }, 300);
+      if ((e.type === 'saved' || e.type === 'saving') && e.bookId === bookId) { epoch++; setStale(true); }
+      if ((e.type === 'status' || e.type === 'saving' || e.type === 'saved' || e.type === 'books') && !timer) timer = setTimeout(() => { timer = null; load(); }, 300);
     });
     return () => { alive = false; clearTimeout(timer); off(); };
   }, [library, bookId]);

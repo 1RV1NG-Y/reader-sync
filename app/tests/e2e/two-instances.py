@@ -2,8 +2,11 @@
 # pair, B receives the file, A reads and hands off, B continues at A's place.
 # Build first: (cd app && npx tauri build --debug --no-bundle). Usage: python3 app/tests/e2e/two-instances.py <scratch dir>
 import json, subprocess, time, urllib.request, base64, os, sys
-S = sys.argv[1]; BIN = "/home/yo/Projects/reader-sync/target/debug/reader-sync"
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[3]
+S = sys.argv[1]; BIN = str(ROOT / "target/debug/reader-sync")
 procs = []
+sessions = []
 def start(name, port):
     d = f"{S}/inst-{name}"
     os.makedirs(d, exist_ok=True)
@@ -12,8 +15,9 @@ def start(name, port):
     time.sleep(1)
     def req(method, path, body=None):
         r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", method=method, data=json.dumps(body).encode() if body is not None else None, headers={"Content-Type": "application/json"})
-        return json.loads(urllib.request.urlopen(r, timeout=120).read())["value"]
+        return json.loads(urllib.request.urlopen(r, timeout=25).read())["value"]
     sid = req("POST", "/session", {"capabilities": {"alwaysMatch": {"webkitgtk:browserOptions": {"binary": BIN, "args": []}}}})["sessionId"]
+    sessions.append(lambda: req("DELETE", f"/session/{sid}"))
     def js(code):
         return req("POST", f"/session/{sid}/execute/async", {"script": "const done = arguments[arguments.length-1]; const rpc = (method, params) => window.__TAURI_INTERNALS__.invoke('rpc', { method, params: params ?? null }); (async () => { " + code + " })().then(v => done(v), e => done('ERR ' + (e?.message ?? e)));", "args": []})
     def shot(f): open(f, "wb").write(base64.b64decode(req("GET", f"/session/{sid}/screenshot")))
@@ -29,7 +33,7 @@ try:
     A, shotA, endA = start("Test A", 4444)
     B, shotB, endB = start("Test B", 4445)
     time.sleep(3)
-    b64 = base64.b64encode(open("/home/yo/Projects/reader-sync/app/tests/fixtures/sample.epub","rb").read()).decode()
+    b64 = base64.b64encode((ROOT / "app/tests/fixtures/sample.epub").read_bytes()).decode()
     print("A import:", A("""
       const bytes = Uint8Array.from(atob('""" + b64 + """'), c => c.charCodeAt(0));
       const dt = new DataTransfer(); dt.items.add(new File([bytes], 'sample.epub'));
@@ -46,14 +50,19 @@ try:
       document.querySelector('.handoff').click(); await new Promise(r => setTimeout(r, 300));
       return document.querySelector('.handoff').className + ' | ' + document.querySelector('.handoff').getAttribute('aria-label');"""))
     wait(A, "A shows B has the place", "return document.querySelector('.handoff')?.classList.contains('handoff-ready') === true", 30)
-    shotA(f"{S}/two-A.png")
     print("A chip:", A("return document.querySelector('.handoff').getAttribute('aria-label')"))
-    print("B opens:", B("""const id = (await rpc('books'))[0].id; const sel = await rpc('peekPosition', { id }); return JSON.stringify({ decision: sel.decision, fraction: sel.position?.fraction, chapter: sel.position?.locator?.chapter });"""))
-    print("B UI opens:", B("""
+    saved = A("const id = (await rpc('books'))[0].id; return (await rpc('peekPosition', { id })).position;")
+    received = B("const id = (await rpc('books'))[0].id; return (await rpc('peekPosition', { id })).position;")
+    assert received['locator']['cfi'] == saved['locator']['cfi'], (saved, received)
+    assert abs(saved['fraction'] - .6) < .03, saved
+    opened = B("""
       for (let i = 0; i < 20 && !document.querySelector('.book-card'); i++) await new Promise(r => setTimeout(r, 250));
       document.querySelector('.book-card').click(); await new Promise(r => setTimeout(r, 3500));
-      const v = document.querySelector('foliate-view'); return JSON.stringify({ fraction: v?.lastLocation?.fraction, notice: document.querySelector('.notice')?.innerText });"""))
-    shotB(f"{S}/two-B.png")
-    endA(); endB()
+      const v = document.querySelector('foliate-view'); return { fraction: v?.lastLocation?.fraction, notice: document.querySelector('.notice')?.innerText };""")
+    print("B UI opens:", opened)
+    assert abs(opened['fraction'] - saved['fraction']) < .01, (saved, opened)
 finally:
+    for end in reversed(sessions):
+        try: end()
+        except Exception: pass
     for p in procs: p.terminate()

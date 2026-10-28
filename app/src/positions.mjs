@@ -57,6 +57,7 @@ export function seenAfter(previous, shownHeads, me, rev) {
  *   flushAll()                   flush every book with a pending write.
  *   exclusive(bookId, fn)        cancel the pending write and run `fn` (a decision write) in the
  *                                book's write order instead. Resolves with fn's result.
+ *   serialize(bookId, fn)        run `fn` in the book's write order, preserving pending writes.
  *   pending(bookId)              the locator waiting to be written, if any.
  *
  * Writes for one book are serialised: a flush issued while a debounced write is in flight lands
@@ -98,6 +99,7 @@ export function createCheckpointer({ write, delay = 2000, timers = globalThis, o
       waiting.delete(bookId);
       return enqueue(bookId, fn);
     },
+    serialize: enqueue,
     flushAll() {
       return Promise.all([...waiting.keys()].map(id => this.flush(id)));
     },
