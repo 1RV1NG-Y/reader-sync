@@ -4,7 +4,7 @@ Read `PLAN.md` first (the agreed design; §8 is the work plan). This file says w
 what is verified, and exactly what is left, so work can resume from here.
 
 Last updated: 2026-10-28. Milestone I1 (integration) is implemented; what remains of it is
-testing on real devices, starting with the user's Windows boot.
+testing on real devices; the dual-boot test passed.
 
 ## Done
 
@@ -31,7 +31,7 @@ testing on real devices, starting with the user's Windows boot.
 - **Phone (Galaxy S22, Android 16):** release APK from `d8159fc` installed, paired with Linux,
   background service running. Rebuild with `npm run android:build` (output
   `app/android-dist/reader-sync.apk`, git-ignored), then `adb install -r`.
-- **Windows:** not installed yet. The exe comes from CI: `gh run list --limit 1`, then
+- **Windows:** installed by the user from the CI artifact and paired. New builds come from CI: `gh run list --limit 1`, then
   `gh run download <run id> -n reader-sync-windows-x64` (latest green run: `40619126843`).
 - **Library:** Accelerando, A Canticle for Leibowitz, Stories of Your Life and Others. Astra's
   three test books were trashed and deleted forever on 2026-10-27; the phone acked it.
@@ -41,11 +41,8 @@ testing on real devices, starting with the user's Windows boot.
 
 ## I1 — what's left (real-device checks, PLAN §8)
 
-1. **The dual-boot test (user, next):** on Linux, read until Devices/reader shows "SM-S901E has
-   your place" → shut down → boot Windows → run the exe → Devices → "Show this device's code"
-   → scan it from the phone → Windows receives the books → open the book → it resumes at the
-   same passage. Windows Firewall must allow the app on the private network (it usually asks
-   on first run; if pairing hangs, check that).
+1. ~~The dual-boot test~~ **passed 2026-10-28 (user):** Linux → phone → Windows resumed
+   correctly; the user also added books on Windows.
 2. Scroll on, and confirm the ✓ turns off at once and returns only after the phone acks.
 3. Scroll and close immediately → the other device resumes at the closing location.
 4. Phone Wi-Fi off halfway through a book's transfer, back on → transfer resumes.
