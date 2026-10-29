@@ -34,6 +34,10 @@
 // info() → { backend: 'local' | 'core', synced: bool, device: { id, name } }
 // listBooks() → BookSummary[]                       (most recently read / added first)
 // getBook(id) → BookSummary | null
+// listTrash() → BookSummary[]                       (books in Trash, most recently added first)
+// setTrashed(ids, trashed) → void                   — move to Trash / restore (files are kept)
+// deleteForever(ids) → void                         — gone with its positions and files, on
+//      every device (only for books in Trash). Importing the same file later is a new book.
 // importFiles(files: File[]) → { added: BookSummary[], skipped: [{ name, reason, id?, message }] }
 //      reason: 'duplicate' (same bytes already in the library; `id` names it) |
 //              'unsupported' (not EPUB or PDF) | 'error' (`message` says why)
@@ -231,8 +235,15 @@ export function createLocalLibrary({
     return {
       id: book.id, title: book.title, author: book.author, format: book.format, size: book.size,
       addedAt: book.addedAt, originalName: book.originalName, cover: book.cover ?? null,
-      progress, lastReadAt: mine?.at ?? null,
+      progress, lastReadAt: mine?.at ?? null, trashed: !!book.trashed,
     };
+  };
+
+  const allBooks = async () => {
+    const s = await ready();
+    const [books, positions] = await Promise.all([store.getAll('books'), store.getAll('positions')]);
+    const byBook = Map.groupBy(positions, p => p.bookId);
+    return books.map(b => summary(b, byBook.get(b.id) ?? [], s.device.id));
   };
 
   const requireBook = async id => {
@@ -248,12 +259,29 @@ export function createLocalLibrary({
     },
 
     async listBooks() {
-      const s = await ready();
-      const [books, positions] = await Promise.all([store.getAll('books'), store.getAll('positions')]);
-      const byBook = Map.groupBy(positions, p => p.bookId);
-      return books
-        .map(b => summary(b, byBook.get(b.id) ?? [], s.device.id))
+      return (await allBooks()).filter(b => !b.trashed)
         .sort((a, b) => (b.lastReadAt ?? b.addedAt).localeCompare(a.lastReadAt ?? a.addedAt));
+    },
+
+    async listTrash() {
+      return (await allBooks()).filter(b => b.trashed).sort((a, b) => b.addedAt.localeCompare(a.addedAt));
+    },
+
+    async setTrashed(ids, trashed) {
+      const books = (await Promise.all(ids.map(id => store.get('books', id)))).filter(Boolean);
+      await store.write(books.map(b => ({ table: 'books', key: b.id, value: { ...b, trashed } })));
+      emit({ type: 'books' });
+    },
+
+    async deleteForever(ids) {
+      const books = (await Promise.all(ids.map(id => store.get('books', id)))).filter(b => b?.trashed);
+      const positions = await store.getAll('positions');
+      await store.write(books.flatMap(b => [
+        { table: 'books', key: b.id, value: undefined },
+        { table: 'files', key: b.id, value: undefined },
+        ...positions.filter(p => p.bookId === b.id).map(p => ({ table: 'positions', key: positionKey(p.bookId, p.deviceId), value: undefined })),
+      ]));
+      emit({ type: 'books' });
     },
 
     async getBook(id) {

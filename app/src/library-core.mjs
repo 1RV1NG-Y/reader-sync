@@ -8,13 +8,15 @@
 //                connected, hasAllMyChanges, lastSeen, lastError }], ... }
 //   handoff(bookId) → [{ device, name, connected, hasPlace, hasFile }]   (PLAN.md §5)
 //   downloads() → { transfers: [{ book, from, received, size }], pausedForSpace, errors }
+//   removeDownload(id) (frees space here; the book stays everywhere), restoreDownload(id),
+//   onlyCopy(id) → true when no other device is known to hold the file,
 //   retryDownloads(), createInvite() → { ticket, qrSvg, expiresAt, kind },
 //   join(ticket) → { device, joined }, removeDevice(id), networkChanged()
 //   and the event { type: 'status' } (devices, acknowledgements, transfers changed).
 //
 // Covers are a local cache (IndexedDB), made on each device from its own copy of the file;
-// they are never synced. Book summaries also carry `available` (the file is on this device)
-// and `heldBy` (names of devices that hold it).
+// they are never synced. Book summaries also carry `available` (the file is on this device),
+// `heldBy` (names of devices that hold it) and `downloadRemoved` (removed from this device).
 
 import { detectFormat } from './library.mjs';
 import { cleanLocator } from './locator.mjs';
@@ -80,7 +82,15 @@ export function createCoreLibrary({ invoke, listen, covers, extractMetadata, raw
     available: view.heldBy.includes(me()),
     heldBy: view.heldBy.filter(d => d !== me()).map(nameOf),
     trashed: view.trashed,
+    downloadRemoved: view.downloadRemoved,
   });
+  /** A library change: the list reflects it as soon as the call returns. */
+  const change = async (method, params) => {
+    await ready();
+    await call(method, params);
+    await refreshBooks();
+    emit({ type: 'books' });
+  };
   const refreshBooks = async () => {
     books = new Map((await call('books')).map(b => [b.id, b]));
     makeMissingCovers();
@@ -218,6 +228,17 @@ export function createCoreLibrary({ invoke, listen, covers, extractMetadata, raw
         .map(summary)
         .sort((a, b) => (b.lastReadAt ?? b.addedAt).localeCompare(a.lastReadAt ?? a.addedAt));
     },
+
+    async listTrash() {
+      await ready();
+      return [...books.values()].filter(b => b.trashed).map(summary).sort((a, b) => b.addedAt.localeCompare(a.addedAt));
+    },
+
+    setTrashed: (ids, trashed) => change('setTrashed', { ids, trashed }),
+    deleteForever: ids => change('deleteForever', { ids }),
+    removeDownload: id => change('removeDownload', { id }),
+    restoreDownload: id => change('restoreDownload', { id }),
+    onlyCopy: id => call('onlyCopy', { id }),
 
     async getBook(id) {
       await ready();

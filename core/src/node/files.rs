@@ -277,8 +277,8 @@ impl Node {
         Ok(())
     }
 
-    /// Opening a book whose download was removed brings it back.
-    pub(super) async fn restore_download(&self, book: &str) -> Result<()> {
+    /// "Download again" (and opening a book whose download was removed) brings it back.
+    pub async fn restore_download(&self, book: &str) -> Result<()> {
         let me = self.0.id.to_string();
         if !model::read_removed_downloads(&self.0.state.lock().unwrap().doc, &me).contains(book) {
             return Ok(());
@@ -830,9 +830,12 @@ mod tests {
         assert!(!holds(&b, &other) && b.0.files.store.part_len(&other.hash) == 0);
         tokio::time::sleep(Duration::from_secs(2)).await;
         assert!(!holds(&b, &other), "a removed download isn't fetched again");
-        // Opening it again brings it back.
-        b.open_book(other.id.clone()).await.unwrap();
-        wait_for("downloaded again on open", || holds(&b, &other)).await;
+        let removed = |n: &Node| n.books().iter().any(|v| v.book.id == other.id && v.download_removed);
+        assert!(removed(&b) && !removed(&a), "only the phone shows it as removed");
+        // "Download again" brings it back (opening the book does the same).
+        b.restore_download(&other.id).await.unwrap();
+        wait_for("downloaded again", || holds(&b, &other)).await;
+        assert!(!removed(&b));
         a.shutdown().await;
         b.shutdown().await;
     }

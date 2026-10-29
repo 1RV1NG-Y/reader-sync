@@ -131,6 +131,8 @@ pub struct BookView {
     pub held_by: Vec<String>,
     /// When this device last saved a position in the book (its own clock).
     pub last_read_at: Option<String>,
+    /// The reader removed the book's download from this device ("Download again" undoes it).
+    pub download_removed: bool,
 }
 
 /// Whether another device could continue this book right now (PLAN.md §5).
@@ -439,6 +441,7 @@ impl Node {
         let local = self.0.local.lock().unwrap();
         let holdings = model::read_holdings(&st.doc);
         let me = self.0.id.to_string();
+        let removed = model::read_removed_downloads(&st.doc, &me);
         model::list_books(&st.doc)
             .into_iter()
             .filter(|b| !b.purged)
@@ -450,7 +453,8 @@ impl Node {
                 let last_read_at = positions.get(&me).map(|p| p.at.clone());
                 let progress = positions.values().map(|p| p.fraction).reduce(f64::max);
                 let held_by = holdings.iter().filter(|(_, h)| h.contains(&book.hash)).map(|(d, _)| d.clone()).collect();
-                BookView { book, progress, held_by, last_read_at }
+                let download_removed = removed.contains(&book.id);
+                BookView { book, progress, held_by, last_read_at, download_removed }
             })
             .collect()
     }

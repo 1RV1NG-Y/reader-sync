@@ -78,6 +78,11 @@ pub async fn dispatch(node: &Node, method: &str, params: Value) -> Result<Value>
             node.remove_download(p.id).await?;
             Value::Null
         }
+        "restoreDownload" => {
+            let p: IdParams = serde_json::from_value(p)?;
+            node.restore_download(&p.id).await?;
+            Value::Null
+        }
         "downloads" => serde_json::to_value(node.downloads())?,
         "retryDownloads" => {
             node.retry_downloads();

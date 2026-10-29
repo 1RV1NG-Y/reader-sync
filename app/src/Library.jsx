@@ -1,13 +1,16 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, LayoutGrid, List, MonitorSmartphone, Navigation, Plus } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BookOpen, Download, EllipsisVertical, HardDrive, LayoutGrid, List, MonitorSmartphone, Navigation, Plus, Search, Trash2 } from 'lucide-react';
 import Devices from './Devices.jsx';
 import LocationDialog from './LocationDialog.jsx';
-import { IconButton, ago, formatSize, percent } from './ui.jsx';
+import Trash from './Trash.jsx';
+import { Confirm, IconButton, Menu, ago, formatSize, percent } from './ui.jsx';
 import WindowControls from './WindowControls.jsx';
+import { SORTS, filterBooks, sortBooks } from './library-view.mjs';
 import { onNativeFileDrop } from './platform.mjs';
 
 const ACCEPT = '.epub,.pdf,application/epub+zip,application/pdf';
-const loadMode = () => { try { return localStorage.getItem('reader-sync.libraryView') || 'grid'; } catch { return 'grid'; } };
+const stored = (key, fallback) => { try { return localStorage.getItem(`reader-sync.${key}`) || fallback; } catch { return fallback; } };
+const store = (key, value) => { try { localStorage.setItem(`reader-sync.${key}`, value); } catch { /* preview */ } };
 
 function Cover({ book }) {
   if (book.cover) return <img className="cover" src={book.cover} alt="" draggable="false" />;
@@ -19,11 +22,13 @@ function Cover({ book }) {
   );
 }
 
+const arrivalClass = (b, downloads) => b.downloadRemoved ? 'removed' : arrival(b, downloads) ? 'arriving' : '';
 const progressLabel = b => b.progress > 0 || b.lastReadAt ? percent(b.progress) : 'New';
 
 /** For a book whose file isn't on this device yet: what's happening to it (null when it's here). */
 function arrival(book, downloads) {
   if (book.available !== false) return null;
+  if (book.downloadRemoved) return 'Removed from this device';
   const t = downloads?.transfers.find(x => x.book === book.id);
   if (t) return `Downloading ${percent(t.received / t.size)}`;
   if (downloads?.errors[book.id]) return downloads.errors[book.id];
@@ -33,7 +38,13 @@ function arrival(book, downloads) {
 
 export default function Library({ library, onOpenBook }) {
   const [books, setBooks] = useState(null);
-  const [mode, setMode] = useState(loadMode);
+  const [mode, setMode] = useState(() => stored('libraryView', 'grid'));
+  const [sort, setSort] = useState(() => stored('librarySort', 'recent'));
+  const [query, setQuery] = useState('');
+  const [trashCount, setTrashCount] = useState(0);
+  const [trash, setTrash] = useState(false);
+  const [menu, setMenu] = useState(null); // { book, at: { x, y } }
+  const [removing, setRemoving] = useState(null); // { book, onlyCopy }
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -44,12 +55,17 @@ export default function Library({ library, onOpenBook }) {
   const input = useRef(null);
   const dragDepth = useRef(0);
 
-  const refresh = useCallback(() => library.listBooks().then(setBooks, e => setMessage({ error: true, text: e.message })), [library]);
+  const refresh = useCallback(() => {
+    library.listBooks().then(setBooks, e => setMessage({ error: true, text: e.message }));
+    library.listTrash().then(t => setTrashCount(t.length), () => {});
+  }, [library]);
   useEffect(() => {
     refresh();
     return library.subscribe(e => { if (e.type === 'books') refresh(); });
   }, [library, refresh]);
-  useEffect(() => { try { localStorage.setItem('reader-sync.libraryView', mode); } catch { /* preview */ } }, [mode]);
+  useEffect(() => store('libraryView', mode), [mode]);
+  useEffect(() => store('librarySort', sort), [sort]);
+  const shown = useMemo(() => books && sortBooks(filterBooks(books, query), sort), [books, query, sort]);
   // Synced library: download progress, refreshed (at most every half second) as transfers move.
   useEffect(() => {
     let alive = true;
@@ -68,13 +84,47 @@ export default function Library({ library, onOpenBook }) {
     return () => { alive = false; clearTimeout(timer); cleanup?.(); };
   }, [library]);
   const open = b => {
+    if (b.downloadRemoved) return downloadAgain(b);
     const why = arrival(b, downloads);
     if (why) setMessage({ text: `“${b.title}” isn’t on this device yet: ${why.charAt(0).toLowerCase()}${why.slice(1)}.` });
     else onOpenBook(b.id);
   };
+  const act = async (action, done) => {
+    try { await action(); if (done) setMessage(done); }
+    catch (e) { setMessage({ error: true, text: e?.message ?? String(e) }); }
+  };
+  const moveToTrash = b => act(() => library.setTrashed([b.id], true), {
+    text: `Moved “${b.title}” to Trash.`,
+    action: { label: 'Undo', run: () => act(() => library.setTrashed([b.id], false)) },
+  });
+  const downloadAgain = b => b.heldBy?.length
+    ? act(() => library.restoreDownload(b.id), { text: `Downloading “${b.title}” from ${b.heldBy[0]}…` })
+    : setMessage({ text: `No other device has a copy of “${b.title}”. Import the file again to read it here.` });
+  const askRemove = b => act(async () => setRemoving({ book: b, onlyCopy: await library.onlyCopy(b.id) }));
+  const bookMenu = b => [
+    ...(b.available !== false ? [{ label: 'Open', icon: BookOpen, onSelect: () => open(b) }] : []),
+    ...(synced && b.available !== false ? [{ label: 'Remove from this device', icon: HardDrive, onSelect: () => askRemove(b) }] : []),
+    ...(synced && b.downloadRemoved ? [{ label: 'Download again', icon: Download, onSelect: () => downloadAgain(b) }] : []),
+    { label: 'Move to Trash', icon: Trash2, danger: true, onSelect: () => moveToTrash(b) },
+  ];
+  const menuAt = (b, at) => setMenu({ book: b, at });
+  const onContextMenu = b => e => { e.preventDefault(); menuAt(b, { x: e.clientX, y: e.clientY }); };
+  const moreButton = b => (
+    <button type="button" className="book-more" aria-label={`More for “${b.title}”`} title="More" aria-haspopup="menu"
+      aria-expanded={menu?.book.id === b.id}
+      onClick={e => {
+        if (menu?.book.id === b.id) return setMenu(null);
+        const r = e.currentTarget.getBoundingClientRect();
+        menuAt(b, { x: r.right - 220, y: r.bottom + 4 });
+      }}>
+      <EllipsisVertical size={18} aria-hidden="true" />
+    </button>
+  );
+  const closeMenu = useCallback(() => setMenu(null), []);
+
   useEffect(() => {
     if (!message || message.error) return;
-    const t = setTimeout(() => setMessage(null), 6000);
+    const t = setTimeout(() => setMessage(null), message.action ? 8000 : 6000);
     return () => clearTimeout(t);
   }, [message]);
 
@@ -138,6 +188,10 @@ export default function Library({ library, onOpenBook }) {
         </div>
         <div className="toolbar-spacer" data-tauri-drag-region />
         <div className="toolbar-group" data-tauri-drag-region>
+          <button type="button" className="icon-button icon-badge" aria-label={`Trash${trashCount ? ` (${trashCount})` : ''}`} title="Trash" onClick={() => setTrash(true)}>
+            <Trash2 size={20} strokeWidth={1.75} aria-hidden="true" />
+            {trashCount > 0 && <span className="badge" aria-hidden="true">{trashCount}</span>}
+          </button>
           {synced && <IconButton icon={MonitorSmartphone} label="Devices" onClick={() => setDevices(true)} />}
           <IconButton icon={Navigation} label="Go to location" onClick={() => setGoTo(true)} />
           <IconButton icon={mode === 'grid' ? List : LayoutGrid} label={mode === 'grid' ? 'Show as list' : 'Show as grid'} onClick={() => setMode(m => m === 'grid' ? 'list' : 'grid')} />
@@ -149,7 +203,26 @@ export default function Library({ library, onOpenBook }) {
         </div>
       </header>
 
-      {message && <div className={`toast ${message.error ? 'error' : ''}`} role="status" onClick={() => setMessage(null)}>{message.text}</div>}
+      {message && (
+        <div className={`toast ${message.error ? 'error' : ''}`} role="status" onClick={() => setMessage(null)}>
+          {message.text}
+          {message.action && <button type="button" className="toast-action" onClick={e => { e.stopPropagation(); setMessage(null); message.action.run(); }}>{message.action.label}</button>}
+        </div>
+      )}
+
+      {books?.length > 0 && (
+        <div className="library-bar">
+          <label className="search">
+            <Search size={16} aria-hidden="true" />
+            <input type="search" placeholder="Search title or author" aria-label="Search the library" value={query}
+              onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setQuery(''); }} />
+          </label>
+          <select aria-label="Sort by" value={sort} onChange={e => setSort(e.target.value)}>
+            {Object.entries(SORTS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+          <span className="count">{query ? `${shown.length} of ${books.length}` : books.length === 1 ? '1 book' : `${books.length} books`}</span>
+        </div>
+      )}
 
       <main className="library-main">
         {books === null ? null : books.length === 0 ? (
@@ -159,11 +232,13 @@ export default function Library({ library, onOpenBook }) {
             <p>Import EPUB or PDF files, or drop them here.</p>
             <button type="button" className="primary" onClick={() => input.current.click()}><Plus size={18} aria-hidden="true" /> Import books</button>
           </div>
+        ) : shown.length === 0 ? (
+          <p className="no-match">No books match “{query}”.</p>
         ) : mode === 'grid' ? (
           <ul className="book-grid">
-            {books.map(b => (
-              <li key={b.id}>
-                <button type="button" className={`book-card ${arrival(b, downloads) ? 'arriving' : ''}`} onClick={() => open(b)} title={`${b.title}${b.author ? ` — ${b.author}` : ''}`}>
+            {shown.map(b => (
+              <li key={b.id} onContextMenu={onContextMenu(b)}>
+                <button type="button" className={`book-card ${arrivalClass(b, downloads)}`} onClick={() => open(b)} title={`${b.title}${b.author ? ` — ${b.author}` : ''}`}>
                   <Cover book={b} />
                   {arrival(b, downloads) && <span className="arrival">{arrival(b, downloads)}</span>}
                   <span className="book-title">{b.title}</span>
@@ -173,14 +248,15 @@ export default function Library({ library, onOpenBook }) {
                     <span>{progressLabel(b)}</span>
                   </span>
                 </button>
+                {moreButton(b)}
               </li>
             ))}
           </ul>
         ) : (
           <ul className="book-list">
-            {books.map(b => (
-              <li key={b.id}>
-                <button type="button" className={`book-row ${arrival(b, downloads) ? 'arriving' : ''}`} onClick={() => open(b)}>
+            {shown.map(b => (
+              <li key={b.id} onContextMenu={onContextMenu(b)}>
+                <button type="button" className={`book-row ${arrivalClass(b, downloads)}`} onClick={() => open(b)}>
                   <Cover book={b} />
                   <span className="book-row-text">
                     <span className="book-title">{b.title}</span>
@@ -189,6 +265,7 @@ export default function Library({ library, onOpenBook }) {
                   </span>
                   <span className="book-progress"><span className="bar"><span style={{ width: percent(b.progress) }} /></span><span>{progressLabel(b)}</span></span>
                 </button>
+                {moreButton(b)}
               </li>
             ))}
           </ul>
@@ -201,6 +278,23 @@ export default function Library({ library, onOpenBook }) {
         </div>
       )}
       {devices && <Devices library={library} onClose={() => setDevices(false)} />}
+      {trash && <Trash library={library} synced={synced} onClose={() => setTrash(false)} onMessage={setMessage} />}
+      {menu && <Menu at={menu.at} items={bookMenu(menu.book)} onClose={closeMenu} />}
+      {removing && (
+        <Confirm title="Remove from this device?" confirmLabel="Remove" danger={removing.onlyCopy}
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => {
+            const b = removing.book;
+            setRemoving(null);
+            act(() => library.removeDownload(b.id), { text: `Removed “${b.title}” from this device.` });
+          }}>
+          {removing.onlyCopy ? (
+            <p><strong>No other device has a copy of “{removing.book.title}”.</strong> If you remove it here, it can’t be opened anywhere until you import the file again. Your reading positions are kept.</p>
+          ) : (
+            <p>“{removing.book.title}” stays in your library on all your devices, with your place in it. This frees {formatSize(removing.book.size)} here; open it again to download it from another device.</p>
+          )}
+        </Confirm>
+      )}
       {dragging && <div className="drop-overlay" aria-hidden="true"><div>Drop EPUB or PDF files to add them</div></div>}
       {goTo && <LocationDialog onGo={goToLocation} onClose={() => setGoTo(false)} />}
     </div>

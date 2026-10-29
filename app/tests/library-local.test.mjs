@@ -186,3 +186,25 @@ test('settings: defaults, validated patches, persistence and change events', asy
   assert.deepEqual(events, [{ type: 'settings', settings: s1 }]);
   assert.deepEqual(await setup({ store }).library.getSettings(), s1, 'persisted');
 });
+
+test('Trash hides a book, Restore brings it back, Delete forever removes it with its positions and file', async () => {
+  const { store, library } = setup();
+  const { added: [a, b] } = await library.importFiles([file(epubBytes('a'), 'a.epub'), file(epubBytes('b'), 'b.epub')]);
+  await library.flushPosition(a.id, loc(0.4));
+  await library.deleteForever([a.id]);
+  assert.equal((await library.listBooks()).length, 2, 'only books in Trash can be deleted forever');
+
+  await library.setTrashed([a.id], true);
+  assert.deepEqual((await library.listBooks()).map(x => x.id), [b.id]);
+  assert.deepEqual((await library.listTrash()).map(x => [x.id, x.trashed]), [[a.id, true]]);
+  await library.setTrashed([a.id], false);
+  assert.equal((await library.listBooks()).length, 2);
+  assert.equal((await library.getBook(a.id)).progress, 0.4, 'restoring keeps the position');
+
+  await library.setTrashed([a.id], true);
+  await library.deleteForever([a.id]);
+  assert.deepEqual((await library.listTrash()), []);
+  assert.equal(await library.getBook(a.id), null);
+  assert.equal(await store.get('files', a.id), undefined);
+  assert.deepEqual((await store.getAll('positions')).filter(p => p.bookId === a.id), []);
+});
