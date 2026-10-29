@@ -29,8 +29,10 @@ testing on real devices; the dual-boot test passed.
 - **Linux:** release build (with the tray) installed at `~/.local/share/reader-sync/reader-sync`, menu entry
   "reader-sync". Update after changes with `npm run install:linux` in `app/`. Library data is in
   the Tauri app-data dir (`~/.local/share/app.readersync/library`), shared with dev builds.
-- **Phone (Galaxy S22, Android 16):** release APK from `d8159fc` installed (older than the
-  library/PDF work; wireless adb's port changes when debugging restarts — find it with
+- **Phone (Galaxy S22, Android 16):** release APK from `a2f3a94` (library, publisher styles, PDF
+  recolouring) installed 2026-10-29 with `adb install -r`, not opened since — another agent was
+  using the phone; the sync service restarts when the app is next opened. Not yet tested on the
+  phone. Wireless adb's port changes when debugging restarts (2026-10-29: 35417) — find it with
   `avahi-browse -rpt _adb-tls-connect._tcp`), paired with Linux,
   background service running. Rebuild with `npm run android:build` (output
   `app/android-dist/reader-sync.apk`, git-ignored), then `adb install -r`.
@@ -82,7 +84,7 @@ the activity being recreated. `cargo test -p reader-sync --lib node_slot` covers
 ## Milestone D — daily driver (in progress)
 
 Done (2026-10-29), checked in the Linux app (isolated instances over WebDriver) and the browser
-preview; **not yet tried on the phone** (wireless adb wasn't reachable) **or on Windows** (CI build):
+preview; installed on the phone but **not yet tried there or on Windows** (CI build):
 - **Library management:** each book has a menu (⋯ button, right-click, long-press): Remove from
   this device (only-copy warning), Download again, Move to Trash (with Undo). Trash sheet:
   Restore, Delete forever, Empty Trash (dialogs render through a portal so they sit above
