@@ -185,6 +185,9 @@ async fn dual_boot_handoff_through_the_phone_only() {
         linux.handoff(&b.id).unwrap().iter().any(|h| h.name == "Phone" && h.has_place && h.has_file)
     })
     .await;
+    // Nothing left to send: a desktop app in the background could now quit.
+    wait_for("Linux has given the phone everything", || linux.outgoing().done()).await;
+    assert_eq!(linux.outgoing().connected, vec!["Phone".to_string()]);
     linux.shutdown().await;
     drop(linux);
 

@@ -58,6 +58,7 @@ pub async fn dispatch(node: &Node, method: &str, params: Value) -> Result<Value>
     let p = params;
     Ok(match method {
         "status" => serde_json::to_value(node.status())?,
+        "outgoing" => serde_json::to_value(node.outgoing())?,
         "books" => serde_json::to_value(node.books())?,
         "importBook" => {
             let p: ImportParams = serde_json::from_value(p)?;

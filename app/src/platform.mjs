@@ -41,6 +41,21 @@ export function onWindowClose(beforeClose) {
   return () => { off.then(f => f()); };
 }
 
+const desktopTauri = () => isTauri() && !isAndroid();
+const invokeDesktop = async (cmd, args) => (await import('@tauri-apps/api/core')).invoke(cmd, args);
+
+/** Desktop: closing the window leaves the app syncing in the tray (false where there's no tray). */
+let keepsRunning;
+export const keepsRunningInBackground = () =>
+  keepsRunning ??= desktopTauri() ? invokeDesktop('keeps_running_in_background').catch(() => false) : Promise.resolve(false);
+
+/** Desktop: starting in the tray when the user logs in. */
+export const startAtLogin = {
+  available: desktopTauri(),
+  get: () => invokeDesktop('start_at_login'),
+  set: on => invokeDesktop('set_start_at_login', { on }),
+};
+
 /** Android Back button. handler() returns true when it handled the press; otherwise the app exits. */
 export function onBackButton(handler) {
   if (!isTauri() || !isAndroid()) return () => {};

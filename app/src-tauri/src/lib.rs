@@ -9,6 +9,8 @@ use readersync_core::{Event, ImportMeta, ImportSource, Node, NodeConfig};
 
 #[cfg(target_os = "android")]
 mod android;
+#[cfg(desktop)]
+mod background;
 #[cfg(any(target_os = "android", test))]
 mod node_slot;
 use serde_json::Value;
@@ -117,6 +119,18 @@ async fn android_sync_controls(_app: tauri::AppHandle) -> Result<(), String> {
 pub fn run() {
     init_logging();
     let builder = tauri::Builder::default();
+    // First: a second launch (menu, login item) shows this app's window instead of starting
+    // another node on the same library. `READER_SYNC_MULTI_INSTANCE` turns that off for test
+    // instances with their own data dirs (app/tests/e2e).
+    #[cfg(desktop)]
+    let builder = if std::env::var_os("READER_SYNC_MULTI_INSTANCE").is_some() {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _, _| background::open_window(app)))
+    };
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![background::BACKGROUND_ARG])));
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
     #[cfg(target_os = "android")]
@@ -150,6 +164,14 @@ pub fn run() {
             #[cfg(not(target_os = "android"))]
             if let Ok(node) = &node {
                 forward_events(app.handle().clone(), node);
+                background::setup(app.handle(), node.clone())?;
+            }
+            // Without a node there is nothing to keep running: just show the error.
+            #[cfg(not(target_os = "android"))]
+            if node.is_err() && app.get_webview_window("main").is_none() {
+                if let Some(config) = app.config().app.windows.iter().find(|w| w.label == "main") {
+                    tauri::WebviewWindowBuilder::from_config(app.handle(), config)?.build()?;
+                }
             }
             #[cfg(not(target_os = "android"))]
             app.manage(AppNode(node));
@@ -166,9 +188,31 @@ pub fn run() {
                 dropped.extend(paths.iter().cloned());
             }
         })
-        .invoke_handler(tauri::generate_handler![rpc, import_book, book_file, book_file_base64, read_dropped_file, android_sync_controls])
-        .run(tauri::generate_context!())
-        .expect("error while running reader-sync");
+        .invoke_handler(tauri::generate_handler![
+            rpc,
+            import_book,
+            book_file,
+            book_file_base64,
+            read_dropped_file,
+            android_sync_controls,
+            #[cfg(desktop)]
+            background::keeps_running_in_background,
+            #[cfg(desktop)]
+            background::start_at_login,
+            #[cfg(desktop)]
+            background::set_start_at_login,
+        ])
+        .build(tauri::generate_context!())
+        .expect("error while starting reader-sync")
+        .run(|_app, _event| {
+            // Closing the last window doesn't end the app: it keeps syncing in the tray, or
+            // finishes sending before it quits (background.rs). `app.exit()` does end it.
+            #[cfg(desktop)]
+            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = _event {
+                api.prevent_exit();
+                background::window_closed(_app);
+            }
+        });
 }
 
 fn forward_events(handle: tauri::AppHandle, node: &Node) {

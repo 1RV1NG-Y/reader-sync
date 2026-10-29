@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Desktop: whether closing the window keeps the app syncing in the tray, and starting at login.",
+          "type": "string",
+          "const": "allow-background",
+          "markdownDescription": "Desktop: whether closing the window keeps the app syncing in the tray, and starting at login."
+        },
+        {
           "description": "Use the library: the sync core's rpc, and book bytes in and out.",
           "type": "string",
           "const": "allow-library",

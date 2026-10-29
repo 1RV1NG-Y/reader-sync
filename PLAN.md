@@ -264,6 +264,17 @@ against Android's documented foreground-service types: `dataSync` is limited to 
 apps targeting Android 15+; `specialUse` is meant only for cases the other types don't cover,
 so being sideloaded doesn't by itself make it appropriate.
 
+**Desktop background** (added during I1, at the user's request). Closing the window doesn't stop
+sync: the app stays in the system tray (status line such as "Sending 2 books to Phone", Open,
+Quit), so books just imported and positions just saved still reach the other devices. Quit
+first finishes giving the *connected* devices what they lack (`Node::outgoing`), with "Quit now"
+to skip that; nothing connected → quits at once. Where there's no tray (Linux without a
+StatusNotifierItem host, e.g. GNOME without the AppIndicator extension) closing the window does
+that same finish-then-quit, invisibly, rather than leave an app nobody can see. A second launch
+shows the running app's window. "Start when you log in" (Devices, per device, off by default)
+starts it in the tray. With the app in the tray the reader's close no longer waits for the
+handoff; the background does.
+
 ## 6. File lifecycle
 
 ### Deleting and freeing space

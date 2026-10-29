@@ -89,6 +89,27 @@ pub struct DeviceStatus {
     pub last_error: Option<String>,
 }
 
+/// What this device still has to give the devices it is connected to right now. A desktop
+/// app keeps running in the background (or finishes before quitting) until this is empty.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Outgoing {
+    /// Names of the connected devices.
+    pub connected: Vec<String>,
+    /// A connected device hasn't confirmed every change this device has.
+    pub changes: bool,
+    /// Books this device holds that a connected device wants and doesn't hold yet.
+    pub books: usize,
+    /// Books this device is downloading.
+    pub receiving: usize,
+}
+
+impl Outgoing {
+    pub fn done(&self) -> bool {
+        !self.changes && self.books == 0
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Invite {
@@ -784,6 +805,37 @@ impl Node {
             unsaved: !st.store.persisted().includes_vv(&mine),
             devices,
         }
+    }
+
+    pub fn outgoing(&self) -> Outgoing {
+        let receiving = self.downloads().transfers.len();
+        let st = self.0.state.lock().unwrap();
+        let sessions = self.0.sessions.lock().unwrap();
+        let mine = st.doc.oplog_vv();
+        let me = self.0.id.to_string();
+        let holdings = model::read_holdings(&st.doc);
+        let held_here = holdings.get(&me).cloned().unwrap_or_default();
+        let books = model::list_books(&st.doc);
+        let mut out = Outgoing { connected: vec![], changes: false, books: 0, receiving };
+        let mut sending = HashSet::new();
+        for (id, r) in model::read_devices(&st.doc) {
+            if id == me || r.removed || !id.parse::<EndpointId>().is_ok_and(|k| sessions.contains_key(&k)) {
+                continue;
+            }
+            let acked = st.peers.get(&id).and_then(|i| i.acked.as_ref()).and_then(|v| VersionVector::decode(v).ok());
+            out.changes |= !acked.is_some_and(|vv| vv.includes_vv(&mine));
+            let removed = model::read_removed_downloads(&st.doc, &id);
+            let held = holdings.get(&id);
+            for b in &books {
+                if !b.purged && !b.trashed && !removed.contains(&b.id) && held_here.contains(&b.hash) && !held.is_some_and(|h| h.contains(&b.hash)) {
+                    sending.insert(b.hash.clone());
+                }
+            }
+            out.connected.push(r.name);
+        }
+        out.books = sending.len();
+        out.connected.sort();
+        out
     }
 
     fn trusted_peers(&self) -> Vec<EndpointId> {

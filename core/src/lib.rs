@@ -13,7 +13,7 @@ pub mod store;
 pub use iroh::EndpointId;
 pub use model::{Book, BookPatch, NewBook};
 pub use node::{
-    BookView, Choice, DeviceStatus, Downloads, Event, Handoff, ImportMeta, ImportSource, Invite, Node, NodeConfig, PairResult, SpaceIssue,
+    BookView, Choice, DeviceStatus, Downloads, Event, Handoff, ImportMeta, ImportSource, Invite, Node, NodeConfig, Outgoing, PairResult, SpaceIssue,
     Status, TransferView,
 };
 pub use positions::{Decision, Location, Placed, RevRef, Selection};

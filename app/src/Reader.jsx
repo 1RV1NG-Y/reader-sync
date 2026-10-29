@@ -6,7 +6,7 @@ import TocPanel from './reader/TocPanel.jsx';
 import SearchPanel from './reader/SearchPanel.jsx';
 import { ArrivalBanner, ContinuedNote, DivergentChooser } from './reader/PositionNotices.jsx';
 import LocationDialog from './LocationDialog.jsx';
-import { canFullscreen, isAndroid, onBackButton, onWindowClose, toggleFullscreen } from './platform.mjs';
+import { canFullscreen, isAndroid, keepsRunningInBackground, onBackButton, onWindowClose, toggleFullscreen } from './platform.mjs';
 import { IconButton, percent } from './ui.jsx';
 import WindowControls from './WindowControls.jsx';
 import Handoff, { waitForHandoff } from './Handoff.jsx';
@@ -147,10 +147,12 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('blur', onBlur);
     window.addEventListener('pagehide', onPageHide);
-    // Closing the window: save the live location, then give a connected device a few seconds
-    // to confirm it has it (PLAN.md §5), unless the reader chooses "Close anyway".
+    // Closing the window: save the live location. If the app then quits, give a connected
+    // device a few seconds to confirm it has it (PLAN.md §5), unless the reader chooses "Close
+    // anyway"; if it keeps syncing in the tray, it finishes handing off there.
     const offClose = onWindowClose(async () => {
       await flush();
+      if (await keepsRunningInBackground()) return;
       const devices = await library.handoff?.(bookId).catch(() => []) ?? [];
       const target = devices.find(d => d.connected);
       if (!target || devices.some(d => d.hasPlace && d.hasFile)) return;

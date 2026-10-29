@@ -17,7 +17,8 @@
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "allow-read-dropped-file",
-    "allow-library"
+    "allow-library",
+    "allow-background"
   ],
   "platforms": [
     "linux",

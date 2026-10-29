@@ -10,7 +10,7 @@ sessions = []
 def start(name, port):
     d = f"{S}/inst-{name}"
     os.makedirs(d, exist_ok=True)
-    env = dict(os.environ, TAURI_WEBVIEW_AUTOMATION="true", XDG_DATA_HOME=f"{d}/data", XDG_CONFIG_HOME=f"{d}/cfg", XDG_CACHE_HOME=f"{d}/cache", READER_SYNC_DEVICE_NAME=name)
+    env = dict(os.environ, TAURI_WEBVIEW_AUTOMATION="true", XDG_DATA_HOME=f"{d}/data", XDG_CONFIG_HOME=f"{d}/cfg", XDG_CACHE_HOME=f"{d}/cache", READER_SYNC_DEVICE_NAME=name, READER_SYNC_MULTI_INSTANCE="1")
     procs.append(subprocess.Popen(["WebKitWebDriver", f"--port={port}"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     time.sleep(1)
     def req(method, path, body=None):

@@ -3,7 +3,7 @@
 Read `PLAN.md` first (the agreed design; §8 is the work plan). This file says what is done,
 what is verified, and exactly what is left, so work can resume from here.
 
-Last updated: 2026-10-28. Milestone I1 (integration) is implemented; what remains of it is
+Last updated: 2026-10-29. Milestone I1 (integration) is implemented; what remains of it is
 testing on real devices; the dual-boot test passed.
 
 ## Done
@@ -22,10 +22,11 @@ testing on real devices; the dual-boot test passed.
 | Pending checkpoints kept across idle commits; stale "has your place" rejected | `6e58c02` | 4 backend regression tests; two-instance test checks the receiving reader's position |
 | Android background sync: `connectedDevice` foreground service | `d8159fc` | S22: screen off 60 s, forced deep Doze, and a fresh connection in Doze — each position durably acked in ~0.5 s (details below) |
 | Linux install with a menu entry (`npm run install:linux`) | `79def67` | installed on the user's PC, launched from the menu |
+| Desktop background: tray, quit after sync, no-tray fallback, single instance, start at login (PLAN §5) | "Desktop: keep syncing in the tray" | core test (`outgoing`); Linux, isolated instances: close keeps syncing; second launch reopens the window; Quit waited until a 150 MB book reached the peer (3.4 s), then exited; same without a tray (private D-Bus); login entry written/removed; `--background` starts tray-only. Windows: CI build only, not tried |
 
 ## Current state of the user's devices
 
-- **Linux:** release build installed at `~/.local/share/reader-sync/reader-sync`, menu entry
+- **Linux:** release build (with the tray) installed at `~/.local/share/reader-sync/reader-sync`, menu entry
   "reader-sync". Update after changes with `npm run install:linux` in `app/`. Library data is in
   the Tauri app-data dir (`~/.local/share/app.readersync/library`), shared with dev builds.
 - **Phone (Galaxy S22, Android 16):** release APK from `d8159fc` installed, paired with Linux,
@@ -48,7 +49,9 @@ testing on real devices; the dual-boot test passed.
 4. Phone Wi-Fi off halfway through a book's transfer, back on → transfer resumes.
 5. Kill the app mid-reading → reopens at the last checkpoint.
 6. Read offline on two devices → divergence prompt; choose → no prompt elsewhere.
-7. Android service, not yet exercised: notification permission denied, Pause/Resume from the
+7. **Desktop background on Windows (user):** close the window → tray icon stays, its menu says
+   what's being sent; Quit; Devices → "Start when you log in".
+8. Android service, not yet exercised: notification permission denied, Pause/Resume from the
    notification, service recreated after the process is killed, battery cost over hours, and
    Doze with the optional battery exemption on.
 
@@ -92,7 +95,11 @@ From PLAN §8, plus what came up since:
 ## Testing tools
 
 - Linux app under WebDriver: `TAURI_WEBVIEW_AUTOMATION=true` + `WebKitWebDriver`;
-  `app/tests/e2e/two-instances.py` runs two instances (`READER_SYNC_DEVICE_NAME` sets names).
+  `app/tests/e2e/two-instances.py` runs two instances (`READER_SYNC_DEVICE_NAME` sets names,
+  `READER_SYNC_MULTI_INSTANCE=1` turns off single-instance so they can run side by side).
+- Tray menus can be read and clicked over D-Bus (`busctl --user`: the item's `Menu` property,
+  then `com.canonical.dbusmenu` `GetLayout` / `Event … clicked`). The autostart library writes
+  to the real `~/.config/autostart` even when `XDG_CONFIG_HOME` is redirected.
 - Android WebView: build `npx tauri android build --debug --apk --target aarch64` (env
   `ANDROID_HOME=~/Android/Sdk NDK_HOME=~/Android/Sdk/ndk/<ver>
   JAVA_HOME=/usr/lib/jvm/java-21-openjdk`), install the universal debug APK,

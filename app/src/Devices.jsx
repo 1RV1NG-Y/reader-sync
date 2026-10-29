@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ClipboardPaste, Copy, Laptop, Monitor, QrCode, ScanLine, Smartphone } from 'lucide-react';
 import { Sheet, ago } from './ui.jsx';
-import { androidSyncControls, copyText, scanQrCode } from './platform.mjs';
+import { androidSyncControls, copyText, keepsRunningInBackground, scanQrCode, startAtLogin } from './platform.mjs';
 
 const PlatformIcon = ({ platform }) =>
   platform === 'android' ? <Smartphone size={18} aria-hidden="true" />
@@ -17,6 +17,14 @@ export default function Devices({ library, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [inTray, setInTray] = useState(false);
+  const [atLogin, setAtLogin] = useState(null);
+
+  useEffect(() => {
+    keepsRunningInBackground().then(setInTray);
+    if (startAtLogin.available) startAtLogin.get().then(setAtLogin, () => {});
+  }, []);
+  const changeAtLogin = on => run(async () => { await startAtLogin.set(on); setAtLogin(on); });
 
   useEffect(() => {
     const load = () => library.status().then(setStatus, e => setError(e.message ?? String(e)));
@@ -64,6 +72,13 @@ export default function Devices({ library, onClose }) {
             <small>{status.addresses.filter(a => !a.startsWith('[')).join(' · ') || 'No network address yet'}</small>
           </div>
         </div>
+        {inTray && <p className="hint">Closing the window keeps reader-sync syncing in the background, so your other devices can still reach this one. Open or quit it from its icon in the system tray.</p>}
+        {atLogin !== null && (
+          <label className="field toggle">
+            <span>Start when you log in{inTray ? ' (in the tray)' : ''}</span>
+            <input type="checkbox" role="switch" checked={atLogin} onChange={e => changeAtLogin(e.target.checked)} />
+          </label>
+        )}
       </section>
 
       <section>
