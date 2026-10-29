@@ -82,6 +82,7 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
         file,
         format: summary.format,
         settings: settingsRef.current,
+        originalColors: !!summary.originalColors,
         onRelocate: (locator, info) => {
           live.current = locator;
           setWhere(info);
@@ -295,6 +296,11 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
 
   const r = reader.current;
   const pdf = (book?.format ?? r?.format) === 'pdf';
+  const setOriginalColors = on => {
+    setBook(b => ({ ...b, originalColors: on }));
+    reader.current?.setOriginalColors(on);
+    library.setOriginalColors(bookId, on).catch(console.error);
+  };
   const scrolled = !pdf && settings.flow === 'scrolled';
   const title = book?.title ?? '';
 
@@ -373,7 +379,8 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
 
       {panel === 'toc' && r && <TocPanel toc={r.toc} current={where.tocHref} onGo={goAndClose} onClose={closePanel} />}
       {panel === 'search' && r && <SearchPanel reader={r} state={search} setState={setSearch} onGo={goAndClose} onClose={closePanel} />}
-      {panel === 'settings' && <SettingsPanel settings={settings} onChange={onSettings} onClose={closePanel} pdf={pdf} />}
+      {panel === 'settings' && <SettingsPanel settings={settings} onChange={onSettings} onClose={closePanel} pdf={pdf}
+        originalColors={!!book?.originalColors} onOriginalColors={setOriginalColors} />}
       {panel === 'location' && (
         <LocationDialog pdf={pdf} current={{ bookId, locator: liveLocator() }} onGo={goToParsed} onClose={closePanel} />
       )}

@@ -453,9 +453,14 @@ background work is done here.
 ### D — daily driver
 
 Trash / remove download / delete forever with the only-copy warning, metadata editing, covers,
-library sorting/search, a "Publisher styles: on/off" reading setting (some books' own CSS breaks at larger font sizes, e.g. fixed-height chapter headings), PDF support, Android "Open with" + share target, import existing books
-from your Foliate / Thorium / Moon+ folders (optionally their positions, where readable).
+library sorting/search, a "Publisher styles: on/off" reading setting (some books' own CSS breaks at larger font sizes, e.g. fixed-height chapter headings), PDF support (pages
+recoloured for sepia/dark — paper → theme background, ink → theme text — with a per-book
+"Original colours" switch; fit width / whole page).
 **Check:** you use it instead of the three apps for a week.
+
+**Backlog** (the user's call, 2026-10-29: after the above): import existing books from your
+Foliate / Thorium / Moon+ folders (optionally their positions, where readable); Android "Open
+with" + share target and desktop "Open with"; renaming devices.
 
 ### Later, as needed
 

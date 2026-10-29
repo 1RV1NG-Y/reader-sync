@@ -29,4 +29,6 @@ test('the local foliate-js patch is still applied (see VENDORED.md, "Local patch
   const turnPage = paginator.slice(paginator.indexOf('async #turnPage('), paginator.indexOf('prev(distance) {'));
   assert.match(turnPage, /finally \{\s*this\.#locked = false/, 'the navigation lock must be released in a finally');
   assert.match(turnPage, /if \(index != null\) await this\.#goTo/, 'no navigation past the first/last section');
+  const fixedLayout = readFileSync(new URL('../vendor/foliate-js/fixed-layout.js', import.meta.url), 'utf8');
+  assert.match(fixedLayout, /const \{ clientWidth: width, clientHeight: height \} = this/, 'PDF pages fit the width inside the scrollbar');
 });

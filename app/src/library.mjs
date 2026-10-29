@@ -36,6 +36,7 @@
 // getBook(id) → BookSummary | null
 // listTrash() → BookSummary[]                       (books in Trash, most recently added first)
 // setTrashed(ids, trashed) → void                   — move to Trash / restore (files are kept)
+// setOriginalColors(id, on) → void                 — PDF: pages as printed in every theme
 // deleteForever(ids) → void                         — gone with its positions and files, on
 //      every device (only for books in Trash). Importing the same file later is a new book.
 // importFiles(files: File[]) → { added: BookSummary[], skipped: [{ name, reason, id?, message }] }
@@ -235,7 +236,7 @@ export function createLocalLibrary({
     return {
       id: book.id, title: book.title, author: book.author, format: book.format, size: book.size,
       addedAt: book.addedAt, originalName: book.originalName, cover: book.cover ?? null,
-      progress, lastReadAt: mine?.at ?? null, trashed: !!book.trashed,
+      progress, lastReadAt: mine?.at ?? null, trashed: !!book.trashed, originalColors: !!book.originalColors,
     };
   };
 
@@ -270,6 +271,12 @@ export function createLocalLibrary({
     async setTrashed(ids, trashed) {
       const books = (await Promise.all(ids.map(id => store.get('books', id)))).filter(Boolean);
       await store.write(books.map(b => ({ table: 'books', key: b.id, value: { ...b, trashed } })));
+      emit({ type: 'books' });
+    },
+
+    async setOriginalColors(id, on) {
+      const book = await requireBook(id);
+      await store.write([{ table: 'books', key: id, value: { ...book, originalColors: !!on } }]);
       emit({ type: 'books' });
     },
 

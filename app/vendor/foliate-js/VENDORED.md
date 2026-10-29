@@ -31,6 +31,10 @@ below, and re-apply (or drop, if upstream fixed it) when re-vendoring.
   on the last) called `#goTo` with an undefined index, which threw while the lock was held, so
   every later navigation (arrows, progress bar, taps) silently did nothing. Found on Android:
   a tap on the top quarter of the cover froze the reader.
+- `fixed-layout.js`, `#render`: fit-width/fit-page measure the inner size (`clientWidth` /
+  `clientHeight`) instead of `getBoundingClientRect()`. Upstream fitted a PDF page to the full
+  width including the vertical scrollbar that the fitted page itself causes, so every page
+  overflowed sideways by the scrollbar's width and showed a horizontal scrollbar.
 
 ## How the app uses it
 

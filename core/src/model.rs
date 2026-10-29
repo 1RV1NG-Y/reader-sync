@@ -63,6 +63,8 @@ pub struct Book {
     pub purged: bool,
     pub purged_at: Option<String>,
     pub purged_by: Option<String>,
+    /// PDFs: show the pages' own colours instead of recolouring them for the theme.
+    pub original_colors: bool,
 }
 
 /// A file being added to the library. The front end reads title and author from the book.
@@ -85,6 +87,7 @@ pub struct NewBook {
 pub struct BookPatch {
     pub title: Option<String>,
     pub author: Option<String>,
+    pub original_colors: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -174,6 +177,7 @@ pub fn read_book(doc: &LoroDoc, id: &str) -> Option<Book> {
         purged: bool_field(&m, "purged"),
         purged_at: opt_str_field(&m, "purgedAt"),
         purged_by: opt_str_field(&m, "purgedBy"),
+        original_colors: bool_field(&m, "originalColors"),
     })
 }
 
@@ -277,6 +281,10 @@ pub fn update_book(doc: &LoroDoc, id: &str, patch: &BookPatch) -> Result<bool> {
                 changed = true;
             }
         }
+    }
+    if let Some(value) = patch.original_colors.filter(|v| *v != book.original_colors) {
+        m.insert("originalColors", value)?;
+        changed = true;
     }
     Ok(changed)
 }
@@ -474,11 +482,13 @@ pub(crate) mod tests {
         assert!(added_a && added_b);
         assert_eq!(id_a, id_b);
         update_book(&a, &id_a, &BookPatch { title: Some("Renamed on A".into()), ..Default::default() }).unwrap();
-        update_book(&b, &id_b, &BookPatch { author: Some("Author from B".into()), ..Default::default() }).unwrap();
+        update_book(&b, &id_b, &BookPatch { author: Some("Author from B".into()), original_colors: Some(true), ..Default::default() }).unwrap();
+        assert!(!update_book(&b, &id_b, &BookPatch { original_colors: Some(true), ..Default::default() }).unwrap(), "no change");
         sync(&a, &b);
         assert_eq!(list_books(&a), list_books(&b));
         let book = read_book(&a, &id_a).unwrap();
         assert_eq!((book.title.as_str(), book.author.as_str()), ("Renamed on A", "Author from B"));
+        assert!(book.original_colors);
         assert_eq!(list_books(&a).len(), 1);
         assert!(!add_book(&a, &new_book(1), "A").unwrap().1, "importing again finds the existing book");
     }

@@ -10,6 +10,7 @@
 //   downloads() → { transfers: [{ book, from, received, size }], pausedForSpace, errors }
 //   removeDownload(id) (frees space here; the book stays everywhere), restoreDownload(id),
 //   onlyCopy(id) → true when no other device is known to hold the file,
+//   setOriginalColors(id, on) (a PDF shown as printed in every theme; synced with the book),
 //   retryDownloads(), createInvite() → { ticket, qrSvg, expiresAt, kind },
 //   join(ticket) → { device, joined }, removeDevice(id), networkChanged()
 //   and the event { type: 'status' } (devices, acknowledgements, transfers changed).
@@ -83,6 +84,7 @@ export function createCoreLibrary({ invoke, listen, covers, extractMetadata, raw
     heldBy: view.heldBy.filter(d => d !== me()).map(nameOf),
     trashed: view.trashed,
     downloadRemoved: view.downloadRemoved,
+    originalColors: !!view.originalColors,
   });
   /** A library change: the list reflects it as soon as the call returns. */
   const change = async (method, params) => {
@@ -239,6 +241,7 @@ export function createCoreLibrary({ invoke, listen, covers, extractMetadata, raw
     removeDownload: id => change('removeDownload', { id }),
     restoreDownload: id => change('restoreDownload', { id }),
     onlyCopy: id => call('onlyCopy', { id }),
+    setOriginalColors: (id, on) => change('updateBook', { id, patch: { originalColors: on } }),
 
     async getBook(id) {
       await ready();

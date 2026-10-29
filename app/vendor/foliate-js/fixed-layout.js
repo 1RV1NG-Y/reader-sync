@@ -108,7 +108,8 @@ export class FixedLayout extends HTMLElement {
         const left = this.#left ?? {}
         const right = this.#center ?? this.#right ?? {}
         const target = side === 'left' ? left : right
-        const { width, height } = this.getBoundingClientRect()
+        // reader-sync patch: the inner size, without a scrollbar (see VENDORED.md)
+        const { clientWidth: width, clientHeight: height } = this
         const portrait = this.spread !== 'both' && this.spread !== 'portrait'
             && height > width
         this.#portrait = portrait

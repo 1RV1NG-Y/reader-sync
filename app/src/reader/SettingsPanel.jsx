@@ -38,13 +38,22 @@ function Toggle({ label, checked, onChange }) {
   );
 }
 
-export default function SettingsPanel({ settings: s, onChange, onClose, pdf }) {
+export default function SettingsPanel({ settings: s, onChange, onClose, pdf, originalColors, onOriginalColors }) {
   const set = key => value => onChange({ [key]: value });
   return (
     <Sheet side="right" title="Reading settings" onClose={onClose} className="settings-sheet">
       <Segmented label="Theme" value={s.theme} onChange={set('theme')}
         options={Object.entries(THEMES).map(([k, t]) => [k, t.label, { background: t.bg, color: t.fg }])} />
-      {pdf ? <p className="hint">PDF pages are shown as printed: text settings and layout don't apply to them.</p> : <>
+      {pdf ? <>
+        <Segmented label="Page" value={s.pdfZoom} onChange={set('pdfZoom')} options={[['fit-width', 'Fit width'], ['fit-page', 'Whole page']]} />
+        {s.theme !== 'light' && <Toggle label="Original colours (this book)" checked={originalColors} onChange={onOriginalColors} />}
+        <p className="hint">{s.theme === 'light'
+          ? 'Pages are shown as printed. In Sepia and Dark they’re recoloured to match.'
+          : originalColors
+            ? 'This book’s pages are shown as printed.'
+            : 'Pages are recoloured to match the theme, which also turns pictures into one colour. For comics or picture books, turn on Original colours.'}</p>
+        <p className="hint">Text settings and layout don’t apply to PDF pages.</p>
+      </> : <>
         <Segmented label="Layout" value={s.flow} onChange={set('flow')} options={[['scrolled', 'Scrolled'], ['paginated', 'Pages']]} />
         <Segmented label="Font" value={s.fontFamily} onChange={set('fontFamily')}
           options={Object.entries(FONT_FAMILIES).map(([k, f]) => [k, f.label, f.stack ? { fontFamily: f.stack } : undefined])} />
@@ -54,6 +63,9 @@ export default function SettingsPanel({ settings: s, onChange, onClose, pdf }) {
         <Slider label="Line width" value={s.maxWidth} min={400} max={1400} step={20} format={v => `${v}px`} onChange={set('maxWidth')} />
         <Toggle label="Justify text" checked={s.justify} onChange={set('justify')} />
         <Toggle label="Hyphenation" checked={s.hyphenate} onChange={set('hyphenate')} />
+        <Toggle label="Publisher styles" checked={s.publisherStyles} onChange={set('publisherStyles')} />
+        {!s.publisherStyles && <p className="hint">The book’s own sizes, positions and spacing are ignored, so text flows plainly. Turn this back on if pictures or tables look wrong.</p>}
+        {s.publisherStyles && <p className="hint">Turn off if headings or text overlap or get cut off at larger font sizes.</p>}
       </>}
       <button type="button" className="reset" onClick={() => onChange({ ...DEFAULT_SETTINGS })}>Reset to defaults</button>
     </Sheet>

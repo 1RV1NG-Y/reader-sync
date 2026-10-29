@@ -12,9 +12,11 @@
 //   the location at the top of the viewport directly, so a close/background right after a
 //   scroll saves where the reader actually is.
 // - PDF (via PDF.js) uses foliate-js's fixed-layout renderer: one page at a time, no scrolled
-//   mode, no reflow settings. The PDF locator is { page, offset: 0 }.
+//   mode, no reflow settings. The PDF locator is { page, offset: 0 }. Each page is its own
+//   document (canvas + text layer); in sepia and dark each rendered canvas is recoloured
+//   (settings.mjs `pdfPalette`), unless the book keeps its own colours.
 import { makeSnippet } from '../locator.mjs';
-import { bookCSS, paginatorAttributes } from '../settings.mjs';
+import { bookCSS, paginatorAttributes, pdfPalette, recolorPixels } from '../settings.mjs';
 
 let foliate;
 /** Loads foliate-js once; resolves to the module exports of view.js (View, makeBook, …). */
@@ -44,8 +46,9 @@ export function bookAuthor(metadata) {
  * @param onRelocate (locator, info) on every location change; info = { fraction, chapter,
  *                   tocHref, section, sectionCount, reason }
  * @param onDocument (doc, index) for each loaded section document (key/tap listeners)
+ * @param originalColors  PDF: show pages as printed in every theme
  */
-export async function openReader({ host, file, format, settings, onRelocate, onDocument, onMovement }) {
+export async function openReader({ host, file, format, settings, onRelocate, onDocument, onMovement, originalColors = false }) {
   const { makeBook } = await loadFoliate();
   const parsed = await makeBook(file);
   // PDFs: one page at a time, centred (foliate-js would otherwise pair pages into spreads).
@@ -102,6 +105,34 @@ export async function openReader({ host, file, format, settings, onRelocate, onD
     report(locatorFrom(e.detail), e.detail);
   });
   view.addEventListener('load', e => onDocument?.(e.detail.doc, e.detail.index));
+
+  // PDF pages follow the theme: every canvas PDF.js puts into a page is recoloured as it
+  // arrives. A palette change re-renders the page (from the PDF, so nothing is lost).
+  let keepColors = originalColors;
+  const palette = () => (keepColors || !currentSettings ? null : pdfPalette(currentSettings.theme));
+  let paletteKey = 'none';
+  const rerender = () => { const r = view.renderer; r.setAttribute('zoom', r.getAttribute('zoom') ?? 'fit-width'); };
+  const repaintPages = () => {
+    const key = JSON.stringify(palette());
+    if (key === paletteKey) return;
+    paletteKey = key;
+    rerender();
+  };
+  if (isPDF) view.addEventListener('load', e => {
+    const holder = e.detail.doc.querySelector('#canvas');
+    if (!holder) return;
+    new MutationObserver(() => {
+      for (const canvas of holder.querySelectorAll('canvas')) recolorCanvas(canvas, palette());
+    }).observe(holder, { childList: true });
+  });
+  // A page turn empties and refills the renderer: its scrollbar goes and comes back within one
+  // frame, so foliate-js never sees the width change and the fitted page can end up as wide as
+  // the renderer *without* the scrollbar, overflowing sideways. Re-fit once when that happens.
+  // (After the page's `load`: the renderer lays the page out right after that event.)
+  if (isPDF) view.addEventListener('load', () => setTimeout(() => {
+    const r = view.renderer;
+    if (r.scrollWidth > r.clientWidth + 1 && r.getAttribute('zoom')?.startsWith('fit')) r.setAttribute('zoom', r.getAttribute('zoom'));
+  }, 50));
 
   // Scrolled mode: swiping past the end (start) of a chapter goes to the next (previous) one.
   // Only a swipe that *starts* at the edge counts, so the momentum of a scroll that merely
@@ -234,8 +265,10 @@ export async function openReader({ host, file, format, settings, onRelocate, onD
 
     applySettings(s) {
       if (isPDF) {
-        if (!view.renderer.hasAttribute('zoom')) view.renderer.setAttribute('zoom', 'fit-width');
+        const zoom = s.pdfZoom ?? 'fit-width';
+        if (view.renderer.getAttribute('zoom') !== zoom) view.renderer.setAttribute('zoom', zoom);
         currentSettings = s;
+        repaintPages();
         return;
       }
       const attrs = paginatorAttributes(s);
@@ -243,6 +276,12 @@ export async function openReader({ host, file, format, settings, onRelocate, onD
         if (view.renderer.getAttribute(name) !== value) view.renderer.setAttribute(name, value);
       if (!currentSettings || bookCSS(currentSettings) !== bookCSS(s)) view.renderer.setStyles?.(bookCSS(s));
       currentSettings = s;
+    },
+
+    /** PDF: pages as printed (true) or recoloured for the theme (false). */
+    setOriginalColors(on) {
+      keepColors = !!on;
+      if (isPDF) repaintPages();
     },
 
     async *search(query) {
@@ -259,6 +298,16 @@ export async function openReader({ host, file, format, settings, onRelocate, onD
   };
   controller.applySettings(settings);
   return controller;
+}
+
+/** Recolours a freshly rendered PDF page canvas for `palette` (null: leave it as printed). */
+function recolorCanvas(canvas, palette) {
+  if (!palette || canvas.dataset.recolored || !canvas.width || !canvas.height) return;
+  canvas.dataset.recolored = '1';
+  const ctx = canvas.getContext('2d');
+  const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  recolorPixels(image.data, palette);
+  ctx.putImageData(image, 0, 0);
 }
 
 const clamp01 = x => Math.min(1, Math.max(0, Number.isFinite(x) ? x : 0));

@@ -29,7 +29,9 @@ testing on real devices; the dual-boot test passed.
 - **Linux:** release build (with the tray) installed at `~/.local/share/reader-sync/reader-sync`, menu entry
   "reader-sync". Update after changes with `npm run install:linux` in `app/`. Library data is in
   the Tauri app-data dir (`~/.local/share/app.readersync/library`), shared with dev builds.
-- **Phone (Galaxy S22, Android 16):** release APK from `d8159fc` installed, paired with Linux,
+- **Phone (Galaxy S22, Android 16):** release APK from `d8159fc` installed (older than the
+  library/PDF work; wireless adb's port changes when debugging restarts — find it with
+  `avahi-browse -rpt _adb-tls-connect._tcp`), paired with Linux,
   background service running. Rebuild with `npm run android:build` (output
   `app/android-dist/reader-sync.apk`, git-ignored), then `adb install -r`.
 - **Windows:** installed by the user from the CI artifact and paired. New builds come from CI: `gh run list --limit 1`, then
@@ -77,20 +79,31 @@ the Android runtime (`app/src-tauri/src/android.rs`, `node_slot.rs`; Kotlin in
 `gen/android/.../LanSyncService.kt`, `LanSyncRuntime.kt`, `LanSyncPlugin.kt`) so it survives
 the activity being recreated. `cargo test -p reader-sync --lib node_slot` covers stop/reopen.
 
-## Next milestone: D — daily driver (not started)
+## Milestone D — daily driver (in progress)
 
-From PLAN §8, plus what came up since:
-- Trash / remove download / delete forever UI (the core has `setTrashed`, `removeDownload`,
-  `onlyCopy`, `deleteForever`; no UI yet).
-- Metadata editing, covers, library sorting/search, device rename.
-- "Publisher styles: on/off" reading setting (e.g. Accelerando's fixed-height headings).
-- PDF support. **Dark/sepia for PDFs:** recolour the rendered page so paper → theme background
-  and ink → theme text (a CSS/SVG colour filter, not just `invert`), plus a per-book
-  "Original colours" switch for comics and photo-heavy PDFs (images get recoloured too).
-- Android "Open with" + share target; desktop "Open with" (handle a file passed at launch,
-  then add `MimeType=application/epub+zip;application/pdf;` back to the desktop entry in
-  `app/scripts/install-linux.mjs`).
-- Import from Foliate / Thorium / Moon+ folders (positions where readable).
+Done (2026-10-29), checked in the Linux app (isolated instances over WebDriver) and the browser
+preview; **not yet tried on the phone** (wireless adb wasn't reachable) **or on Windows** (CI build):
+- **Library management:** each book has a menu (⋯ button, right-click, long-press): Remove from
+  this device (only-copy warning), Download again, Move to Trash (with Undo). Trash sheet:
+  Restore, Delete forever, Empty Trash (dialogs render through a portal so they sit above
+  sheets). Core: `BookView.downloadRemoved`, RPC `restoreDownload`.
+- **Search and sort:** bar under the toolbar; title/author/file name, accent-insensitive; sort by
+  recently read, title (ignoring articles), author surname, recently added (`library-view.mjs`).
+- **Publisher styles** switch (synced setting `publisherStyles`): off drops the book's fixed
+  sizes, floats, positioning and spacing (`settings.mjs` `PLAIN_LAYOUT`). Fixes Accelerando's
+  chapter headings.
+- **PDFs:** pages recoloured for sepia/dark by mapping each pixel's luminance onto the theme
+  (`pdfPalette`, `recolorPixels`; done on the canvas because WebKitGTK ignores SVG filters on
+  HTML); per-book "Original colours" (core `Book.originalColors`, via `updateBook`); "Page: Fit
+  width / Whole page" (setting `pdfZoom`). Second foliate-js patch: fit-width measures inside
+  the scrollbar (VENDORED.md); the engine re-fits once after a page turn when needed.
+
+Left in D: metadata editing, covers (sync or better generation). The user's daily-use check.
+
+Backlog (user's decision): import from Foliate / Thorium / Moon+; Android "Open with" + share
+target; desktop "Open with" (handle a file passed at launch, then add
+`MimeType=application/epub+zip;application/pdf;` back to the desktop entry in
+`app/scripts/install-linux.mjs`); device rename.
 
 ## Testing tools
 
