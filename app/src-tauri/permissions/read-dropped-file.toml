@@ -12,3 +12,8 @@ commands.allow = ["rpc", "import_book", "book_file", "book_file_base64"]
 identifier = "allow-background"
 description = "Desktop: whether closing the window keeps the app syncing in the tray, and starting at login."
 commands.allow = ["keeps_running_in_background", "start_at_login", "set_start_at_login"]
+
+[[permission]]
+identifier = "allow-android"
+description = "Android: the native background-sync controls, and the system bars while a book is open."
+commands.allow = ["android_sync_controls", "android_reading_bars"]

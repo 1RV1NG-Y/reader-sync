@@ -1,6 +1,6 @@
 {
   "identifier": "mobile",
-  "description": "Main window on Android: Back button handling and exiting from the library",
+  "description": "Main window on Android: Back button handling and exiting from the library, the library, the background-sync controls and the system bars while reading",
   "windows": [
     "main"
   ],
@@ -8,6 +8,7 @@
     "core:default",
     "core:app:allow-exit",
     "allow-library",
+    "allow-android",
     "barcode-scanner:default"
   ],
   "platforms": [

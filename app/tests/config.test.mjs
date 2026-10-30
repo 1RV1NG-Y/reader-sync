@@ -32,3 +32,24 @@ test('the local foliate-js patch is still applied (see VENDORED.md, "Local patch
   const fixedLayout = readFileSync(new URL('../vendor/foliate-js/fixed-layout.js', import.meta.url), 'utf8');
   assert.match(fixedLayout, /const \{ clientWidth: width, clientHeight: height \} = this/, 'PDF pages fit the width inside the scrollbar');
 });
+
+// The app defines its own permissions, so Tauri rejects any app command no capability allows,
+// before the handler runs; the page only sees a rejected promise.
+test('every app command is allowed by a permission that a capability enables', () => {
+  const rs = readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
+  const handler = rs.match(/generate_handler!\[([\s\S]*?)\]/)[1];
+  const commands = handler.split('\n').map(l => l.trim().replace(/,$/, '')).filter(l => l && !l.startsWith('#'))
+    .map(c => c.split('::').pop());
+  const toml = readFileSync(new URL('../src-tauri/permissions/read-dropped-file.toml', import.meta.url), 'utf8');
+  const permissions = {};
+  for (const block of toml.split('[[permission]]').slice(1))
+    permissions[block.match(/identifier = "(.+)"/)[1]] = JSON.parse(block.match(/commands\.allow = (\[.*\])/)[1]);
+  const enabled = ['default', 'mobile'].flatMap(name =>
+    JSON.parse(readFileSync(new URL(`../src-tauri/capabilities/${name}.json`, import.meta.url))).permissions);
+  const allowed = new Set(Object.entries(permissions).filter(([id]) => enabled.includes(id)).flatMap(([, cmds]) => cmds));
+  assert.ok(commands.length > 5, 'found the command list');
+  assert.deepEqual(commands.filter(c => !allowed.has(c)), []);
+  const mobile = JSON.parse(readFileSync(new URL('../src-tauri/capabilities/mobile.json', import.meta.url))).permissions;
+  for (const c of commands.filter(c => c.startsWith('android_')))
+    assert.ok(Object.entries(permissions).some(([id, cmds]) => cmds.includes(c) && mobile.includes(id)), `${c} is allowed on Android`);
+});

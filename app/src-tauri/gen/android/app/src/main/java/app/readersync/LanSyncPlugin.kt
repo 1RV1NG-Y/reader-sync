@@ -33,6 +33,7 @@ class LanSyncPlugin(private val activity: Activity) : Plugin(activity) {
   @Command
   fun setReadingBars(invoke: Invoke) {
     val args = invoke.parseArgs(ReadingBarsArgs::class.java)
+    android.util.Log.i("ReadingBars", "reading=${args.reading} hideStatusBar=${args.hideStatusBar} color=${args.color} dark=${args.dark}")
     activity.runOnUiThread {
       try {
         val top = (activity as? MainActivity)?.setReadingBars(

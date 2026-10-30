@@ -142,11 +142,17 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
 
   // Android: the system bars take the page colour, and the status bar hides while reading.
   const { theme, hideStatusBar } = settings;
+  // Asked again after rotating: the camera cutout is at the top only in portrait.
   useEffect(() => {
     if (!readingBars.available) return;
     const t = THEMES[theme] ?? THEMES.light;
-    readingBars({ color: t.bg, dark: t.scheme === 'dark', hideStatusBar })
+    const apply = () => readingBars({ color: t.bg, dark: t.scheme === 'dark', hideStatusBar })
       .then(r => document.documentElement.style.setProperty('--reading-top', `${r?.top ?? 0}px`), console.error);
+    apply();
+    let timer;
+    const resized = () => { clearTimeout(timer); timer = setTimeout(apply, 150); };
+    addEventListener('resize', resized);
+    return () => { clearTimeout(timer); removeEventListener('resize', resized); };
   }, [theme, hideStatusBar]);
   useEffect(() => () => {
     if (!readingBars.available) return;
