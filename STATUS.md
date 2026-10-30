@@ -29,8 +29,8 @@ testing on real devices; the dual-boot test passed.
 - **Linux:** release build (with the tray) installed at `~/.local/share/reader-sync/reader-sync`, menu entry
   "reader-sync". Update after changes with `npm run install:linux` in `app/`. Library data is in
   the Tauri app-data dir (`~/.local/share/app.readersync/library`), shared with dev builds.
-- **Phone (Galaxy S22, Android 16):** release APK from `a2f3a94` (library, publisher styles, PDF
-  recolouring) installed 2026-10-29 with `adb install -r`, not opened since — another agent was
+- **Phone (Galaxy S22, Android 16):** release APK from `b54e168` (library, publisher styles, PDF
+  recolouring, status bar hidden while reading) installed 2026-10-29 with `adb install -r`, not opened since — another agent was
   using the phone; the sync service restarts when the app is next opened. Not yet tested on the
   phone. Wireless adb's port changes when debugging restarts (2026-10-29: 44181) — find it with
   `avahi-browse -rpt _adb-tls-connect._tcp`), paired with Linux,
@@ -105,7 +105,7 @@ preview; installed on the phone but **not yet tried there or on Windows** (CI bu
   "Hide status bar" in reading settings, Android only); a swipe from the top shows it briefly.
   The strips behind the system bars take the page colour while reading (`MainActivity`
   `setReadingBars`, plugin command `setReadingBars`, Tauri command `android_reading_bars`).
-  APK builds; not installed or tried on the phone yet.
+  Installed on the phone; not tried there yet.
 
 Left in D: metadata editing, covers (sync or better generation). The user's daily-use check.
 
