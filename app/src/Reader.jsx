@@ -6,7 +6,8 @@ import TocPanel from './reader/TocPanel.jsx';
 import SearchPanel from './reader/SearchPanel.jsx';
 import { ArrivalBanner, ContinuedNote, DivergentChooser } from './reader/PositionNotices.jsx';
 import LocationDialog from './LocationDialog.jsx';
-import { canFullscreen, isAndroid, keepsRunningInBackground, onBackButton, onWindowClose, toggleFullscreen } from './platform.mjs';
+import { canFullscreen, isAndroid, keepsRunningInBackground, onBackButton, onWindowClose, readingBars, toggleFullscreen } from './platform.mjs';
+import { THEMES } from './settings.mjs';
 import { IconButton, percent } from './ui.jsx';
 import WindowControls from './WindowControls.jsx';
 import Handoff, { waitForHandoff } from './Handoff.jsx';
@@ -138,6 +139,15 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
     settingsRef.current = settings;
     reader.current?.applySettings(settings);
   }, [settings]);
+
+  // Android: the system bars take the page colour, and the status bar hides while reading.
+  const { theme, hideStatusBar } = settings;
+  useEffect(() => {
+    if (!readingBars.available) return;
+    const t = THEMES[theme] ?? THEMES.light;
+    readingBars({ color: t.bg, dark: t.scheme === 'dark', hideStatusBar }).catch(console.error);
+  }, [theme, hideStatusBar]);
+  useEffect(() => () => { if (readingBars.available) readingBars(null).catch(console.error); }, []);
 
   // ── save the live location whenever the app may go away ───────────────────────────────────
   useEffect(() => {

@@ -36,8 +36,10 @@ testing on real devices; the dual-boot test passed.
   `avahi-browse -rpt _adb-tls-connect._tcp`), paired with Linux,
   background service running. Rebuild with `npm run android:build` (output
   `app/android-dist/reader-sync.apk`, git-ignored), then `adb install -r`.
-- **Windows:** installed by the user from the CI artifact and paired. New builds come from CI: `gh run list --limit 1`, then
-  `gh run download <run id> -n reader-sync-windows-x64` (latest green run: `40619126843`).
+- **Windows:** installed by the user from the CI artifact and paired. Every green CI build of
+  `main` replaces the GitHub release "Latest build" (tag `latest`, asset `reader-sync.exe`):
+  https://github.com/1RV1NG-Y/reader-sync/releases/latest (job `release` in
+  `.github/workflows/windows.yml`). Branch builds stay artifacts only (`reader-sync-windows-x64`).
 - **Library:** Accelerando, A Canticle for Leibowitz, Stories of Your Life and Others. Astra's
   three test books were trashed and deleted forever on 2026-10-27; the phone acked it.
 - **Firewall:** the user's Linux runs ufw. The reader needs UDP 47110 from the LAN:
@@ -99,6 +101,11 @@ preview; installed on the phone but **not yet tried there or on Windows** (CI bu
   HTML); per-book "Original colours" (core `Book.originalColors`, via `updateBook`); "Page: Fit
   width / Whole page" (setting `pdfZoom`). Second foliate-js patch: fit-width measures inside
   the scrollbar (VENDORED.md); the engine re-fits once after a page turn when needed.
+- **Phone status bar** hidden while a book is open (synced setting `hideStatusBar`, default on,
+  "Hide status bar" in reading settings, Android only); a swipe from the top shows it briefly.
+  The strips behind the system bars take the page colour while reading (`MainActivity`
+  `setReadingBars`, plugin command `setReadingBars`, Tauri command `android_reading_bars`).
+  APK builds; not installed or tried on the phone yet.
 
 Left in D: metadata editing, covers (sync or better generation). The user's daily-use check.
 

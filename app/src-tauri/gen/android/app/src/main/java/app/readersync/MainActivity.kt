@@ -7,8 +7,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : TauriActivity() {
+  /** While a book is open: the reader's page colour, and whether the status bar is hidden. */
+  data class ReadingBars(val color: Int, val dark: Boolean, val hideStatusBar: Boolean)
+  private var reading: ReadingBars? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
@@ -38,6 +43,18 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  // Android can bring the status bar back when another window (a dialog, the shade) takes focus.
+  override fun onWindowFocusChanged(hasFocus: Boolean) {
+    super.onWindowFocusChanged(hasFocus)
+    if (hasFocus) applyBarColors(resources.configuration)
+  }
+
+  /** Called by the reader when a book opens or its theme changes (null when it closes). */
+  fun setReadingBars(bars: ReadingBars?) {
+    reading = bars
+    applyBarColors(resources.configuration)
+  }
+
   override fun onStop() {
     LanSyncRuntime.setVisible(this, false)
     super.onStop()
@@ -49,14 +66,21 @@ class MainActivity : TauriActivity() {
     applyBarColors(newConfig)
   }
 
-  /** The strips behind the system bars follow the system light/dark mode. */
+  /**
+   * The strips behind the system bars follow the system light/dark mode, or the page while a
+   * book is open. Reading can hide the status bar; a swipe from the top shows it for a moment
+   * without moving the page.
+   */
   private fun applyBarColors(config: Configuration) {
-    val night = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    val bars = reading
+    val dark = bars?.dark ?: ((config.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES)
     val content = findViewById<android.view.View>(android.R.id.content)
-    content.setBackgroundColor(Color.parseColor(if (night) "#222326" else "#ffffff"))
+    content.setBackgroundColor(bars?.color ?: Color.parseColor(if (dark) "#222326" else "#ffffff"))
     WindowCompat.getInsetsController(window, content).apply {
-      isAppearanceLightStatusBars = !night
-      isAppearanceLightNavigationBars = !night
+      isAppearanceLightStatusBars = !dark
+      isAppearanceLightNavigationBars = !dark
+      systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      if (bars?.hideStatusBar == true) hide(WindowInsetsCompat.Type.statusBars()) else show(WindowInsetsCompat.Type.statusBars())
     }
   }
 }

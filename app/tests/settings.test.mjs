@@ -14,6 +14,12 @@ test('publisher styles: on by default, a boolean, and off adds the plain-layout 
   assert.match(off, /:not\(img, svg/, 'pictures keep their size');
 });
 
+test('the status bar is hidden while reading unless turned off', () => {
+  assert.equal(withDefaults({}).hideStatusBar, true);
+  assert.deepEqual(cleanSettingsPatch({ hideStatusBar: false }), { hideStatusBar: false });
+  assert.deepEqual(cleanSettingsPatch({ hideStatusBar: 'no' }), {});
+});
+
 test('PDF recolouring maps white to the theme background and black to its text colour', async () => {
   const { pdfPalette, recolorPixels, THEMES } = await import('../src/settings.mjs');
   assert.equal(pdfPalette('light'), null, 'light shows pages as printed');

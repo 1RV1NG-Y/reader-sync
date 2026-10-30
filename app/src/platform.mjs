@@ -8,6 +8,16 @@ export async function androidSyncControls() {
 }
 androidSyncControls.available = isTauri() && isAndroid();
 
+/**
+ * Android: while a book is open, the strips behind the system bars take the page colour
+ * (`{ color, dark }`) and the status bar hides if `hideStatusBar`. `null` when the book closes.
+ */
+export async function readingBars(bars) {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('android_reading_bars', { bars: bars ? { reading: true, ...bars } : { reading: false } });
+}
+readingBars.available = isTauri() && isAndroid();
+
 /** Toggles fullscreen: the Tauri window on desktop, the Fullscreen API in a browser. */
 export async function toggleFullscreen() {
   if (isTauri() && !isAndroid()) {

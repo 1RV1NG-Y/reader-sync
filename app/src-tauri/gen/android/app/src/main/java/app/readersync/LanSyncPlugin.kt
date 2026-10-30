@@ -11,13 +11,38 @@ import android.provider.Settings
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import android.graphics.Color
 import app.tauri.annotation.Command
+import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.Plugin
 
+@InvokeArg
+class ReadingBarsArgs {
+  var reading: Boolean = false
+  var color: String = "#ffffff"
+  var dark: Boolean = false
+  var hideStatusBar: Boolean = true
+}
+
 @TauriPlugin
 class LanSyncPlugin(private val activity: Activity) : Plugin(activity) {
+  /** The reader's page colour behind the system bars, and the status bar hidden while reading. */
+  @Command
+  fun setReadingBars(invoke: Invoke) {
+    val args = invoke.parseArgs(ReadingBarsArgs::class.java)
+    activity.runOnUiThread {
+      try {
+        (activity as? MainActivity)?.setReadingBars(
+          if (args.reading) MainActivity.ReadingBars(Color.parseColor(args.color), args.dark, args.hideStatusBar) else null)
+        invoke.resolve()
+      } catch (e: IllegalArgumentException) {
+        invoke.reject(e.message)
+      }
+    }
+  }
+
   @Command
   fun showControls(invoke: Invoke) {
     activity.runOnUiThread {

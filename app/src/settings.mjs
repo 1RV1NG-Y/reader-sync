@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   flow: 'scrolled', // 'scrolled' | 'paginated'
   publisherStyles: true, // false: the book's own sizes, positions and spacing give way to plain text
   pdfZoom: 'fit-width', // 'fit-width' | 'fit-page'
+  hideStatusBar: true, // Android: the clock and notifications bar is hidden while a book is open
 });
 
 export const FONT_FAMILIES = {
@@ -41,7 +42,7 @@ export function cleanSettingsPatch(patch) {
       out[key] = Math.round(Math.min(max, Math.max(min, value)) * 100) / 100;
     } else if (CHOICES[key]) {
       if (CHOICES[key].includes(value)) out[key] = value;
-    } else if (key === 'justify' || key === 'hyphenate' || key === 'publisherStyles') {
+    } else if (['justify', 'hyphenate', 'publisherStyles', 'hideStatusBar'].includes(key)) {
       if (typeof value === 'boolean') out[key] = value;
     }
   }

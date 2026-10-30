@@ -1,4 +1,5 @@
 import React from 'react';
+import { readingBars } from '../platform.mjs';
 import { DEFAULT_SETTINGS, FONT_FAMILIES, THEMES } from '../settings.mjs';
 import { Sheet } from '../ui.jsx';
 
@@ -66,6 +67,12 @@ export default function SettingsPanel({ settings: s, onChange, onClose, pdf, ori
         <Toggle label="Publisher styles" checked={s.publisherStyles} onChange={set('publisherStyles')} />
         {!s.publisherStyles && <p className="hint">The book’s own sizes, positions and spacing are ignored, so text flows plainly. Turn this back on if pictures or tables look wrong.</p>}
         {s.publisherStyles && <p className="hint">Turn off if headings or text overlap or get cut off at larger font sizes.</p>}
+      </>}
+      {readingBars.available && <>
+        <Toggle label="Hide status bar" checked={s.hideStatusBar} onChange={set('hideStatusBar')} />
+        <p className="hint">{s.hideStatusBar
+          ? 'The clock and notifications are hidden while a book is open. Swipe down from the top edge to see them for a moment.'
+          : 'The clock and notifications stay visible while reading.'}</p>
       </>}
       <button type="button" className="reset" onClick={() => onChange({ ...DEFAULT_SETTINGS })}>Reset to defaults</button>
     </Sheet>
