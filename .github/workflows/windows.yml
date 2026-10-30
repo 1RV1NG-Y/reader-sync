@@ -1,6 +1,6 @@
 name: Windows
-# Builds and tests reader-sync on real Windows (MSVC) and uploads the app. Linux checks alone
-# don't establish that the Windows build works.
+# Builds and tests reader-sync on real Windows (MSVC) and uploads the app (and, from main, publishes
+# it as the "Latest build" release). Linux checks alone don't establish that the Windows build works.
 on:
   push:
   workflow_dispatch:
@@ -42,3 +42,35 @@ jobs:
           name: reader-sync-windows-x64
           path: dist-win/
           if-no-files-found: error
+  release:
+    # Every green build of main replaces the "Latest build" release, so the newest Windows app is
+    # always at https://github.com/1RV1NG-Y/reader-sync/releases/latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: reader-sync-windows-x64
+          path: dist-win
+      - name: Replace the Latest build release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          # A slower run for an older commit mustn't replace a newer build.
+          if [ "$(gh api "repos/$GH_REPO/commits/main" --jq .sha)" != "$GITHUB_SHA" ]; then
+            echo "main has moved on; leaving the release to the newer run."; exit 0
+          fi
+          printf '%s\n' "Built from ${GITHUB_SHA:0:7}: ${MESSAGE%%$'\n'*}" "" \
+            "**Windows:** download \`reader-sync.exe\` and put it in place of the old one. If reader-sync is running, quit it first from its tray icon (by the clock)." \
+            > notes.md
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest dist-win/reader-sync.exe --target "$GITHUB_SHA" --latest \
+            --title "Latest build" --notes-file notes.md
