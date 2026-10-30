@@ -16,6 +16,7 @@ import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
+import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 
 @InvokeArg
@@ -34,9 +35,9 @@ class LanSyncPlugin(private val activity: Activity) : Plugin(activity) {
     val args = invoke.parseArgs(ReadingBarsArgs::class.java)
     activity.runOnUiThread {
       try {
-        (activity as? MainActivity)?.setReadingBars(
-          if (args.reading) MainActivity.ReadingBars(Color.parseColor(args.color), args.dark, args.hideStatusBar) else null)
-        invoke.resolve()
+        val top = (activity as? MainActivity)?.setReadingBars(
+          if (args.reading) MainActivity.ReadingBars(Color.parseColor(args.color), args.dark, args.hideStatusBar) else null) ?: 0f
+        invoke.resolve(JSObject().put("top", top.toDouble()))
       } catch (e: IllegalArgumentException) {
         invoke.reject(e.message)
       }

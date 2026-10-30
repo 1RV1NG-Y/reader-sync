@@ -29,7 +29,7 @@ testing on real devices; the dual-boot test passed.
 - **Linux:** release build (with the tray) installed at `~/.local/share/reader-sync/reader-sync`, menu entry
   "reader-sync". Update after changes with `npm run install:linux` in `app/`. Library data is in
   the Tauri app-data dir (`~/.local/share/app.readersync/library`), shared with dev builds.
-- **Phone (Galaxy S22, Android 16):** release APK from `b54e168` (library, publisher styles, PDF
+- **Phone (Galaxy S22, Android 16):** release APK with the status-bar fix (after `8acdd3a`) (library, publisher styles, PDF
   recolouring, status bar hidden while reading) installed 2026-10-29 with `adb install -r`, not opened since — another agent was
   using the phone; the sync service restarts when the app is next opened. Not yet tested on the
   phone. Wireless adb's port changes when debugging restarts (2026-10-29: 44181) — find it with
@@ -105,7 +105,11 @@ preview; installed on the phone but **not yet tried there or on Windows** (CI bu
   "Hide status bar" in reading settings, Android only); a swipe from the top shows it briefly.
   The strips behind the system bars take the page colour while reading (`MainActivity`
   `setReadingBars`, plugin command `setReadingBars`, Tauri command `android_reading_bars`).
-  Installed on the phone; not tried there yet.
+  With the bar hidden the page runs to the top edge; the S22's camera cutout is as tall as the
+  status bar (81 px), so the reader's toolbar, notices and side sheets are pushed below it
+  (`--reading-top`, returned by the command). First phone try: the bar stayed — R8 had renamed
+  `ReadingBarsArgs`' fields, so every argument kept its default (now kept in
+  `proguard-rules.pro`). Fixed build installed; the user is checking it.
 
 Left in D: metadata editing, covers (sync or better generation). The user's daily-use check.
 

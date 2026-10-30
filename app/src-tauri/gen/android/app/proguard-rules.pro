@@ -28,4 +28,6 @@
 
 # Tauri loads the plugin and calls commands by reflection; Rust resolves JNI by class name.
 -keep class app.readersync.LanSyncPlugin { *; }
+# Command arguments are filled by name (Jackson); renamed fields would silently keep their defaults.
+-keep class app.readersync.ReadingBarsArgs { *; }
 -keep class app.readersync.LanSyncRuntime { *; }

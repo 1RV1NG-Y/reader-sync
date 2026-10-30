@@ -23,7 +23,9 @@ class MainActivity : TauriActivity() {
       val bars = insets.getInsets(
         WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime()
       )
-      view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+      // With the status bar hidden the page runs up to the top edge, past the camera cutout;
+      // the reader keeps its own toolbar clear of it (see setReadingBars).
+      view.setPadding(bars.left, if (reading?.hideStatusBar == true) 0 else bars.top, bars.right, bars.bottom)
       WindowInsetsCompat.CONSUMED
     }
     applyBarColors(resources.configuration)
@@ -49,10 +51,18 @@ class MainActivity : TauriActivity() {
     if (hasFocus) applyBarColors(resources.configuration)
   }
 
-  /** Called by the reader when a book opens or its theme changes (null when it closes). */
-  fun setReadingBars(bars: ReadingBars?) {
+  /**
+   * Called by the reader when a book opens or its theme changes (null when it closes). Returns
+   * how far the top cutout reaches into the page, in CSS px (0 unless the status bar is hidden).
+   */
+  fun setReadingBars(bars: ReadingBars?): Float {
     reading = bars
     applyBarColors(resources.configuration)
+    val content = findViewById<android.view.View>(android.R.id.content)
+    ViewCompat.requestApplyInsets(content)
+    if (bars?.hideStatusBar != true) return 0f
+    val cutout = ViewCompat.getRootWindowInsets(content)?.getInsets(WindowInsetsCompat.Type.displayCutout())?.top ?: 0
+    return cutout / resources.displayMetrics.density
   }
 
   override fun onStop() {

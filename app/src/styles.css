@@ -186,7 +186,7 @@ input[type='text'], input[type='search'], input:not([type]) {
 .reader.compact .reader-toolbar, .reader.compact .reader-footer {
   position: absolute; left: 0; right: 0; transition: transform 0.18s ease, opacity 0.18s ease; box-shadow: 0 2px 10px rgb(0 0 0 / 0.12);
 }
-.reader.compact .reader-toolbar { top: 0; }
+.reader.compact .reader-toolbar { top: 0; height: calc(var(--toolbar-h) + var(--reading-top, 0px)); padding-top: var(--reading-top, 0px); }
 .reader.compact .reader-footer { bottom: 0; }
 .reader.compact.chrome-hidden .reader-toolbar { transform: translateY(-100%); opacity: 0; pointer-events: none; }
 .reader.compact.chrome-hidden .reader-footer { transform: translateY(100%); opacity: 0; pointer-events: none; }
@@ -197,7 +197,9 @@ input[type='text'], input[type='search'], input:not([type]) {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px 8px 14px; border-radius: 12px;
   background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); font-size: 14px;
 }
-.reader.compact.chrome-shown .notice { top: calc(var(--toolbar-h) + 8px); }
+/* --reading-top: the camera cutout, when a phone's status bar is hidden while reading */
+.reader .notice { top: calc(12px + var(--reading-top, 0px)); }
+.reader.compact.chrome-shown .notice { top: calc(var(--toolbar-h) + var(--reading-top, 0px) + 8px); }
 .notice svg { color: var(--accent); flex: none; }
 .notice button { min-height: 32px; padding: 0 10px; }
 .notice .icon-only { width: 32px; padding: 0; border: none; background: transparent; }
@@ -208,6 +210,7 @@ input[type='text'], input[type='search'], input:not([type]) {
 .sheet {
   position: absolute; top: 0; bottom: 0; width: min(380px, 100%); display: flex; flex-direction: column;
   background: var(--surface); box-shadow: var(--shadow); animation: sheet-in 0.15s ease;
+  padding-top: var(--reading-top, 0px);
 }
 .sheet-left { left: 0; }
 .sheet-right { right: 0; }

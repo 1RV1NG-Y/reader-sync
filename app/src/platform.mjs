@@ -11,10 +11,12 @@ androidSyncControls.available = isTauri() && isAndroid();
 /**
  * Android: while a book is open, the strips behind the system bars take the page colour
  * (`{ color, dark }`) and the status bar hides if `hideStatusBar`. `null` when the book closes.
+ * Resolves to `{ top }`: how far the camera cutout reaches into the page (CSS px), which the
+ * reader keeps its toolbar and panels clear of.
  */
 export async function readingBars(bars) {
   const { invoke } = await import('@tauri-apps/api/core');
-  await invoke('android_reading_bars', { bars: bars ? { reading: true, ...bars } : { reading: false } });
+  return invoke('android_reading_bars', { bars: bars ? { reading: true, ...bars } : { reading: false } });
 }
 readingBars.available = isTauri() && isAndroid();
 

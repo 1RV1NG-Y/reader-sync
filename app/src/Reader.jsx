@@ -145,9 +145,14 @@ export default function Reader({ library, bookId, target, settings, onSettings, 
   useEffect(() => {
     if (!readingBars.available) return;
     const t = THEMES[theme] ?? THEMES.light;
-    readingBars({ color: t.bg, dark: t.scheme === 'dark', hideStatusBar }).catch(console.error);
+    readingBars({ color: t.bg, dark: t.scheme === 'dark', hideStatusBar })
+      .then(r => document.documentElement.style.setProperty('--reading-top', `${r?.top ?? 0}px`), console.error);
   }, [theme, hideStatusBar]);
-  useEffect(() => () => { if (readingBars.available) readingBars(null).catch(console.error); }, []);
+  useEffect(() => () => {
+    if (!readingBars.available) return;
+    document.documentElement.style.removeProperty('--reading-top');
+    readingBars(null).catch(console.error);
+  }, []);
 
   // ── save the live location whenever the app may go away ───────────────────────────────────
   useEffect(() => {

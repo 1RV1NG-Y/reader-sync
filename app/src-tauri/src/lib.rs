@@ -116,15 +116,18 @@ async fn android_sync_controls(_app: tauri::AppHandle) -> Result<(), String> {
 }
 
 /// Android: the page colour behind the system bars, and the status bar hidden while a book is
-/// open (`{ reading, color, dark, hideStatusBar }`). Does nothing elsewhere.
+/// open (`{ reading, color, dark, hideStatusBar }`). Returns `{ top }`: how far the camera
+/// cutout reaches into the page, in CSS px. Does nothing elsewhere.
 #[tauri::command]
-async fn android_reading_bars(app: tauri::AppHandle, bars: Value) -> Result<(), String> {
+async fn android_reading_bars(app: tauri::AppHandle, bars: Value) -> Result<Value, String> {
     #[cfg(target_os = "android")]
-    app.state::<android::Controls>().0.run_mobile_plugin_async::<Value>("setReadingBars", bars)
-        .await.map_err(|e| e.to_string())?;
+    return app.state::<android::Controls>().0.run_mobile_plugin_async::<Value>("setReadingBars", bars)
+        .await.map_err(|e| e.to_string());
     #[cfg(not(target_os = "android"))]
-    let _ = (app, bars);
-    Ok(())
+    {
+        let _ = (app, bars);
+        Ok(Value::Null)
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
