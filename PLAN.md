@@ -461,7 +461,11 @@ a book is open (a reading setting, on by default; a swipe from the top shows it 
 
 **Backlog** (the user's call, 2026-10-29: after the above): import existing books from your
 Foliate / Thorium / Moon+ folders (optionally their positions, where readable); Android "Open
-with" + share target and desktop "Open with"; renaming devices.
+with" + share target and desktop "Open with"; renaming devices; the Android app in the "Latest
+build" release, for sharing (once the whole system is mostly polished): CI builds the APK and signs
+it with a key made for releases, kept in GitHub secrets and backed up outside GitHub — every
+release needs the same key so people can update. The user's own phone keeps updating over adb
+with the local key; a release APK can't install over that, which is fine.
 
 ### Later, as needed
 

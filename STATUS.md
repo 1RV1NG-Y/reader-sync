@@ -32,7 +32,7 @@ testing on real devices; the dual-boot test passed.
 - **Phone (Galaxy S22, Android 16):** release APK from `a2f3a94` (library, publisher styles, PDF
   recolouring) installed 2026-10-29 with `adb install -r`, not opened since — another agent was
   using the phone; the sync service restarts when the app is next opened. Not yet tested on the
-  phone. Wireless adb's port changes when debugging restarts (2026-10-29: 35417) — find it with
+  phone. Wireless adb's port changes when debugging restarts (2026-10-29: 44181) — find it with
   `avahi-browse -rpt _adb-tls-connect._tcp`), paired with Linux,
   background service running. Rebuild with `npm run android:build` (output
   `app/android-dist/reader-sync.apk`, git-ignored), then `adb install -r`.
@@ -112,7 +112,8 @@ Left in D: metadata editing, covers (sync or better generation). The user's dail
 Backlog (user's decision): import from Foliate / Thorium / Moon+; Android "Open with" + share
 target; desktop "Open with" (handle a file passed at launch, then add
 `MimeType=application/epub+zip;application/pdf;` back to the desktop entry in
-`app/scripts/install-linux.mjs`); device rename.
+`app/scripts/install-linux.mjs`); device rename; Android APK in the "Latest build" release, for
+sharing, once things are polished (release key in GitHub secrets, see PLAN §8 D).
 
 ## Testing tools
 
